@@ -1,0 +1,619 @@
+#!/bin/bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright © 2007-2018 ANSSI. All Rights Reserved.
+
+# usb_storage - CLIP hotplug handler for USB mass storage
+# Author: Vincent Strubel <clipos@ssi.gouv.fr>
+# Author: Mickaël Salaün <clipos@ssi.gouv.fr>
+# Based on code by EADS DCS and EADS IW
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version
+# 2 as published by the Free Software Foundation.
+#
+
+# Error messages
+#  Add
+ERROR_DECRYPT_SYM_KEY="Echec lors du déchiffrement de la clé symétrique"
+ERROR_VDEV_MAPPING="Echec lors de la création du périphérique virtuel cryptographique"
+ERROR_SYNCHRO="Delai de synchronisation depasse"
+#  Del
+ERROR_REMOVE_VDEV="Echec dans la suppression du périphérique virtuel"
+ERROR_REMOVE_MDEV="Echec dans la suppression du montage"
+ERROR_REMOVE_LDEV="Echec dans la suppression du périphérique non initialisé"
+ERROR_DEVNUM="Echec de lecture du périphérique"
+
+
+#Debug messages
+DEBUG_SYNCHRO="Synchronisation presence du peripherique"
+DEBUG_NEED_SYNCHRO="Attente de synchronisation"
+DEBUG_SYNCHRO_OK="Synchronisation terminee"
+DEBUG_SYMETRIC="Clef symetrique dechiffree"
+DEBUG_VDEV="Crypto device mapping operationnel"
+DEBUG_SECTOR_EXTRACT="Secteur extrait"
+DEBUG_SYM_KEY_EXTRACT="Clef symetrique extraite"
+DEBUG_SIGNATURE_EXTRACT="Signature extraite"
+DEBUG_CANCEL="Montage annulé par l'utilisateur"
+
+SCRIPT_NAME="hotplug/usb_storage"
+
+DEVTYPE="usb"
+
+source /lib/clip/usb_storage.sub || exit 1
+
+####################################
+############ Util code #############
+####################################
+
+#######################
+#         Add         #
+#######################
+
+# placeholder
+function clean_up()
+{
+	true
+}
+
+# synchronize upon device availability (UDEV only)
+function wait_device()
+{
+	debug "${DEBUG_SYNCHRO}: ${DEVICE_DATA}"
+
+	local -i num=0
+	while ! stat ${DEVICE_DATA} >/dev/null 2>&1 ; do
+		debug "${DEBUG_NEED_SYNCHRO}"
+		sleep 1
+		num=num+1
+		if [[ ${num} -ge 5 ]]; then
+			error "${DEVICE_DATA}: ${ERROR_SYNCHRO} ($num s.)"
+		fi
+	done
+
+	debug "${DEBUG_SYNCHRO_OK}"
+}
+
+function confirm_mount()
+{
+ 	local vendor model
+ 	vendor="$(get_dev_vendor)"
+ 	model="$(get_dev_model)"
+	if [[ -n "${CLEARTEXT_MOUNT}" ]]; then
+		if [[ "${MOUNT_CONFIRM}" != "no" ]]; then
+			local disp_level="$(get_jail_name "${CURRENT_STR_LEVEL}")"
+
+	 		local msg="Confirmez-vous le montage du support ${vendor} ${model} de niveau ${disp_level} (non chiffré"
+			[[ -n "${MOUNT_RO}" ]] && msg="${msg}, lecture seule"
+			msg="${msg}) ?"
+			local title="Montage du support USB au niveau ${disp_level}"
+			if ! ${USER_ENTER} -u "${CURRENT_UID}" -- ${DIALOG} "${AUTHORITY}" --title "${title}" --yesno "${msg}" 0 0; then
+				info "${DEBUG_CANCEL}" "notify"
+				echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+				exit 0
+			fi
+		fi
+	else
+		local -i skip=$((${SECTOR_ID_SIZE} + ${SECTOR_METADATA_SIZE}))
+		SYM_KEY_HEXA=
+		while [[ -z "${SYM_KEY_HEXA}" ]]; do
+			#for private user encryption key
+			get_passphrase "déchiffrement"
+			if [[ $? -ne 0 || -z "${PASSPHRASE}" ]]; then
+				info "${DEBUG_CANCEL}" "notify"
+				echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+				exit 0
+			fi
+			local pass="$(gen_passphrase "enc" "${PASSPHRASE}")"
+
+			#decrypt the symetric key
+			SYM_KEY_HEXA=$(dd if=${DEVICE_META} bs=1 \
+				count=${SECTOR_SYM_KEY_CRYPT_SIZE} skip=${skip} 2>/dev/null | \
+					openssl rsautl -oaep -decrypt -inkey ${CRYPT_PRV_KEY} \
+						-passin pass:"${pass}" 2>/dev/null | \
+					od -tx1 -An | tr -d ' \n')
+			if [[ -z "${SYM_KEY_HEXA}" ]]; then
+				warn "${ERROR_DECRYPT_SYM_KEY}"
+			fi
+		done
+		debug "${DEBUG_SYMETRIC}"
+	fi
+}
+
+function get_jail_popup_uninitialized()
+{
+	local rw_levels=""
+	local levels=""
+	local jails=""
+
+	local vendor model
+	vendor="$(get_dev_vendor)"
+	model="$(get_dev_model)"
+
+	[[ -f "${CONF_FILE}" ]] || error "${ERROR_NO_CONF}"
+	rw_levels="${RW_LEVELS}"
+	[[ -n "${CURRENT_STR_LEVEL}" ]] && rw_levels="" # Signature check failed, allow only ro mount
+
+	case "${CURRENT_USER_TYPE}" in
+		"privuser")
+			jails=( "${PRIVUSER_JAILS[@]}" )
+			;;
+		"audit")
+			jails=( "${AUDIT_JAILS[@]}" )
+			;;
+		"admin")
+			jails=( "${ADMIN_JAILS[@]}" )
+			;;
+		*)
+			jails=( "${USER_JAILS[@]}" )
+			;;
+	esac
+
+	local -i num=0
+	local -i size=9
+	local lastj=""
+	local focus=""
+	if [[ "${USB_MOUNT_CURRENT_LEVEL}" == "yes" && -n "${COMING_FROM_HOTPLUG}" ]]; then
+		[[ -f /usr/local/var/xdom_rm ]] && focus="$(< /usr/local/var/xdom_rm)"
+	fi
+	local jail
+	for jail in "${jails[@]}"; do
+		if [[ -n "${CURRENT_STR_LEVEL}" ]]; then
+			[[ "${jail}" == "${CURRENT_STR_LEVEL}" ]] || continue
+		fi
+		grep -qw "/mnt/${DEVTYPE}" "${MTAB_PATH}/${jail}.mtab" \
+			&& continue
+		local jailname="Niveau $(get_jail_name "${jail}")"
+
+		if echo "${rw_levels}" | grep -wq "${jail}"; then 
+			jailname="\"${jailname} - lecture-écriture\""
+			jail="${jail}rw"
+		elif echo "${RO_LEVELS}" | grep -wq "${jail}"; then
+			jailname="\"${jailname} - lecture seule\""
+		else
+			continue # Not authorized, either as RO or RW.
+		fi
+
+		num=num+1
+		size=size+2
+		lastj="${jail}"
+		if [[ "${jail%rw}" == "${focus}" ]]; then
+			num=1
+			break
+		fi
+		levels="${levels} ${jail} ${jailname} off"
+	done
+
+	if [[ ${num} -eq 0 ]]; then
+		errmsg "Le montage de supports amovibles non initialisés n'est pas autorisé"
+		return 1
+	fi
+
+	local disp_lev=""
+	local title="Montage d'un support ${DEVTYPE_NAME} non initialisé"
+	local msg="Un support ${DEVTYPE_NAME} (${vendor} ${model}) non initialisé a été connecté.
+Souhaitez-vous le monter dans l'un des niveaux suivants ?"
+	local xhelp="
+Le montage d'un support ${DEVTYPE_NAME} non initialisé est possible 
+à un niveau arbitraire. Il peut être limité à un montage en lecture seule, selon
+les paramètres d'installation du poste."
+	if [[ "${num}" -eq 1 ]]; then
+		disp_lev="$(get_jail_name "${lastj%rw}")" 
+		msg="Un support ${DEVTYPE_NAME} (${vendor} ${model}) a été connecté.
+Souhaitez-vous le monter au niveau ${disp_lev} ?"
+	fi
+	if [[ -n "${CURRENT_STR_LEVEL}" ]]; then
+		disp_lev="$(get_jail_name "${CURRENT_STR_LEVEL}")" 
+		title="Montage d'un support ${DEVTYPE_NAME} anormal"
+		msg="Un support ${DEVTYPE_NAME} anormal a été connecté.
+Ce support est de niveau ${disp_lev} mais sa signature est incorrecte.
+Souhaitez-vous tenter de le monter dans le compartiment correspondant ?"
+		xhelp="
+Le montage d'un support ${DEVTYPE_NAME} anormal est possible dans le compartiment
+annoncé, car ceci peut correspondre à un support en clair issu d'un autre poste CLIP."
+	fi
+
+	local level=""
+	if [[ ${num} -eq 1 && -n "${lastj}" ]]; then
+		if ${USER_ENTER} -u "${CURRENT_UID}" \
+				-- ${DIALOG} "${AUTHORITY}" \
+				--title "${title}" \
+				--wrap \
+				--left --stdout --help "${xhelp}" \
+				--yesno "${msg}" ${size} 0 ${num}
+		then
+			level="${lastj}"
+		else
+			return 1
+		fi
+	else
+		level="$(echo ${levels} | xargs ${USER_ENTER} -u "${CURRENT_UID}" \
+				-- ${DIALOG} "${AUTHORITY}" \
+				--title "${title}" \
+				--wrap \
+				--no-tags --left --stdout --help "${xhelp}" \
+				--radiolist "${msg}" ${size} 0 ${num} )"
+		[[ $? -eq 0 ]] || return 1
+	fi
+
+	debug "got level ${level}"
+	local jail="${level%rw}"
+	CURRENT_STR_LEVEL="${jail}"
+	if [[ "${jail}" != "${level}" ]]; then
+		MOUNT_RO=""
+	else 
+		MOUNT_RO="yes"
+	fi
+	case "${jail}" in 
+		"admin"|"update")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="admin"
+			;;
+		"audit")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="audit"
+			;;
+	esac
+	CLEARTEXT_MOUNT="yes"
+
+	get_jail_by_level "${jail}"
+}
+
+function get_jail_popup_any()
+{
+	local levels=""
+	local -a jails
+
+	local vendor model
+	vendor="$(get_dev_vendor)"
+	model="$(get_dev_model)"
+
+	[[ -f "${CONF_FILE}" ]] || error "${ERROR_NO_CONF}"
+	[[ "${USB_LEVEL_ANY}" == "yes" ]] || erro "${ERROR_LEVEL_ANY}"
+	[[ "${CURRENT_STR_LEVEL}" == "${STR_ANY}" ]] || error "${ERROR_BAD_LEVEL}"
+
+	case "${CURRENT_USER_TYPE}" in
+		"audit")
+			jails=( "${AUDIT_JAILS[@]}" )
+			;;
+		"admin")
+			jails=( "${ADMIN_JAILS[@]}" )
+			;;
+		"privuser")
+			jails=( "${PRIVUSER_JAILS[@]}" )
+			;;
+		*)
+			jails=( "${USER_JAILS[@]}" )
+			;;
+	esac
+
+	local -i num=0
+	local -i size=9
+	local lastj=""
+	local focus=""
+	if [[ "${USB_MOUNT_CURRENT_LEVEL}" == "yes" && -n "${COMING_FROM_HOTPLUG}" ]]; then
+		[ -f /usr/local/var/xdom_rm ] && focus="$(< /usr/local/var/xdom_rm)"
+	fi
+	for jail in "${jails[@]}"; do
+		grep -q "/mnt/${DEVTYPE}" "${MTAB_PATH}/${jail}.mtab" \
+			&& continue
+		local jailname="Niveau $(get_jail_name "${jail}")"
+
+		jailname="\"${jailname} - lecture-écriture\""
+		jail="${jail}rw"
+
+		num=num+1
+		size=size+2
+		lastj="${jail}"
+		if [[ "${jail%rw}" == "${focus}" ]]; then
+			num=1
+			break
+		fi
+		levels="${levels} ${jail} ${jailname} off"
+	done
+
+	local disp_lev=""
+	local title="Montage d'un support ${DEVTYPE_NAME} signé"
+	local msg="Un support ${DEVTYPE_NAME} (${vendor} ${model}) signé (tous niveaux) a été connecté.
+Souhaitez-vous le monter dans l'un des niveaux suivants ?"
+	if [[ "${num}" -eq 1 ]]; then
+		disp_lev="$(get_jail_name "${lastj%rw}")" 
+		msg="Un support ${DEVTYPE_NAME} (${vendor} ${model}) signé (tous niveaux) a été connecté.
+Souhaitez-vous le monter au niveau ${disp_lev} ?"
+	fi
+	local level=""
+	if [[ "${num}" -eq 1 && -n "${lastj}" ]]; then
+		if ${USER_ENTER} -u "${CURRENT_UID}" \
+				-- ${DIALOG} "${AUTHORITY}" \
+				--title "${title}" \
+				--wrap \
+				--left --stdout \
+				--yesno "${msg}" ${size} 0 ${num}
+		then
+			level="${lastj}"
+		else
+			return 1
+		fi
+	else
+		level="$(echo ${levels} | xargs ${USER_ENTER} -u "${CURRENT_UID}" \
+				-- ${DIALOG} "${AUTHORITY}" \
+				--title "${title}" \
+				--wrap \
+				--no-tags --left --stdout --help "${xhelp}" \
+				--radiolist "${msg}" ${size} 0 ${num} )"
+		[[ $? -eq 0 ]] || return 1
+	fi
+
+	debug "got level ${level}"
+	local jail="${level%rw}"
+	CURRENT_STR_LEVEL="${jail}"
+	if [[ "${jail}" != "${level}" ]]; then
+		MOUNT_RO=""
+	else 
+		MOUNT_RO="yes"
+	fi
+	case "${jail}" in 
+		"admin"|"update")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="admin"
+			;;
+		"audit")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="audit"
+			;;
+	esac
+	CLEARTEXT_MOUNT="yes"
+	
+	get_jail_by_level "${jail}"
+}
+
+function handle_uninitialized()
+{
+	if ! get_jail_popup_uninitialized; then
+		debug "not mounting uninitialized token"
+		echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+		exit 0
+	fi
+
+	if ! check_not_mounted "nofail"; then
+		echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+		clean_up
+		exit 1
+	fi
+	confirm_mount
+	map_device
+	mount_device
+	clean_up
+	exit 0
+}
+
+function do_add() 
+{
+	XDIALOG_ERROR_TITLE="Préparation du support USB"
+
+	# Retrieve physical device
+	get_hotplug_device_add || return 1
+	# UDEV specific
+	wait_device
+	# Verify that medium is present
+	check_device_usb
+	# Get logged user
+	get_user
+	# Extract level
+	# If this is not an initialized support, keep track of the device number
+	# to be able to initialize it, or export keys to it, later on.
+	# Note that this does not catch cases where the unitiliazed support
+	# matches one of the magic strings...
+	if ! test_level; then
+		if [[ -n "${CURRENT_STR_LEVEL}" ]]; then
+			echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+			clean_up
+			return 1
+		fi
+		get_user_paths
+		handle_uninitialized
+	fi
+
+	get_user_paths
+
+	# Check signature validity
+	if ! check_signature "nofail"; then
+		if [[ -n "${CLEARTEXT_MOUNT}" ]]; then
+			handle_uninitialized
+		fi
+		echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+		clean_up
+		return 1
+	fi
+
+	# Get jail, xid, mount points...
+	if [[ "${CURRENT_STR_LEVEL}" == "${STR_ANY}" ]]; then
+		if ! get_jail_popup_any ; then
+			debug "not mounting uninitialized token"
+			echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+			exit 0
+		fi
+	else
+		get_jail || return 1
+	fi
+
+	# Abort if another device is already mounted in that jail.
+	if ! check_not_mounted "nofail"; then
+		echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+		clean_up
+		return 1
+	fi
+
+	# Decrypt symetric key
+	confirm_mount
+	# Map crypto device
+	map_device
+	# Inform the user
+	mount_device
+	# Clean_up
+	clean_up
+}
+
+
+#######################
+#         Del         #
+#######################
+
+# Remove a CLIP encrypted token (umount, remove dm-setup)
+function remove_encrypted() 
+{
+	local old_ifs=$IFS
+	export IFS=$'\n'
+
+	match=""
+	for entry in $(dmsetup deps); do
+		local mAmI="$(echo "${entry}" | cut -d'(' -f2 | tr -d ' )')"
+		local vdev="$(echo "${entry}" | cut -d':' -f1)"
+		
+		local vmajor="$(echo "${mAmI}" | cut -d',' -f1)"
+		local vminor="$(echo "${mAmI}" | cut -d',' -f2)"
+		
+		if [[ "${MAJOR}" == "${vmajor}" && "${MINOR}" == "${vminor}" ]];then
+			match="${vdev}"
+			break
+		fi
+	done
+	export IFS=${old_ifs}
+
+	[[ -n "${match}" ]] || return 1
+	
+	debug "Removing ${match}"
+	local jail="$(echo ${match} | cut -d "_" -f4-)"
+	case "${jail}" in 
+		"admin"|"update")
+			CURRENT_USER_TYPE="admin"
+			;;
+		"audit")
+			CURRENT_USER_TYPE="audit"
+			;;
+	esac
+	CURRENT_STR_LEVEL="${jail}"
+
+	LEVEL="$(get_jail_name "${jail}")"
+
+	WARN_USER="${CURRENT_STR_LEVEL}"
+	
+	get_jail
+	
+	if grep -q "^${DEV_MAPPER_PATH}/${vdev}"  "${MTAB}"; then
+		debug "Unmounting ${vdev} in ${JAIL}"
+		nsmount -u -m "${MTAB}" -x ${XID} "${MOUNT_POINT}" \
+			|| error "${ERROR_REMOVE_VDEV}: Unmounting ${vdev} in ${JAIL}"
+		DM_COPY="${DM_COPY_PATH}/${vdev}"
+		if [[ -e "${DM_COPY}" ]]; then
+			debug "Removing ${vdev} in ${JAIL}"
+			rm -f "${DM_COPY}" \
+				|| error "${ERROR_REMOVE_VDEV}: Removing ${vdev} in ${JAIL}"
+		fi
+	fi
+	debug "Removing ${vdev} in core"
+	dmsetup remove "${vdev}" \
+		|| error "${ERROR_REMOVE_VDEV}: Removing ${vdev} in core"
+
+}
+
+# Remove a CLIP signed (not encrypted) token (umount, clear mtab).
+function remove_cleartext() 
+{
+	local mnt=""
+	match=""
+	local jail
+	for jail in "${ALL_JAILS[@]}"; do
+		[[ -f "${MTAB_PATH}/${jail}.mtab" ]] || continue
+		mnt="$(awk -vdev="${DEVICE_DATA}" '$1 == dev {print $2}' "${MTAB_PATH}/${jail}.mtab")"
+		if [[ -n "${mnt}" ]]; then
+			match="${jail}"
+			break
+		fi
+	done
+
+	[[ -n "${match}" ]] || return 1
+	debug "Unmounting cleartext device in ${match}"
+	case "${match}" in 
+		"admin")
+			CURRENT_USER_TYPE="admin"
+			;;
+		"audit")
+			CURRENT_USER_TYPE="audit"
+			;;
+	esac
+
+	CURRENT_STR_LEVEL="${match}"
+
+	WARN_USER="${CURRENT_STR_LEVEL}"
+	LEVEL="$(get_jail_name "${match}")"
+	
+	get_jail
+
+	CLEARTEXT_MOUNT="yes"
+	umount_device "nomsg" || error "${ERROR_REMOVE_MDEV}"
+}
+
+# Remove a non-CLIP token (remove lastdev entry, if it matches)
+function remove_notclip() 
+{
+	[[ -f "${LASTDEV_FILE}" ]] || return 1
+
+	local dev="$(< "${LASTDEV_FILE}")"
+
+	if [[ "${dev}" == "${BASE_DEVICE}" ]]; then
+		rm -f "${LASTDEV_FILE}" || error "${ERROR_REMOVE_LDEV}"
+	fi
+}
+
+function do_del() 
+{
+	XDIALOG_ERROR_TITLE="Retrait du support USB"
+
+	get_hotplug_device_del || return 0
+
+	remove_encrypted || remove_cleartext || remove_notclip
+
+	[[ -z "${WARN_USER}" ]] && return 0
+	
+	get_user
+
+	dec_usb_status
+
+	[[ -z "${LEVEL}" ]] && LEVEL="<inconnu>"
+	local title="Débranchement de support USB"
+	local msg="Le support USB de niveau ${LEVEL} a été débranché inopinément. Des informations peuvent avoir été perdues.\nVeuillez à l'avenir utiliser l'option 'Déconnecter le support USB' du menu USB avant de débrancher un support."
+
+	${USER_ENTER} -u "${CURRENT_UID}" -- ${DIALOG} "${AUTHORITY}" \
+		--left --title "${title}" --wrap --msgbox "${msg}" 0 0
+}
+
+####################################
+############ MAIN CODE #############
+####################################
+
+DEVBASE="${DEVPATH##*/}"
+
+exec 150>>"${USB_LOCKFILE}"
+if [[ ( "${DEVBASE%[0-9]}" != "mmcblk" ) && ( "${DEVBASE%[0-9]}" != "${DEVBASE}" ) ]]; then # sdb1, not sdb or mmcblk0p1, not mmcblk0
+	# We deal with DEVPATH="/block/sdb", not DEVPATH="/block/sdb/sdb1"
+	exit 0
+fi
+
+
+if [[ ${USB_LOCKED} != "true" ]]; then
+	flock -x 150 || error "${ERROR_LOCK}"
+fi
+
+case "${1}" in
+	add)
+		do_add
+		;;
+	remove)
+		do_del
+		;;
+	*)
+		logger -p daemon.warning "hotplug/usb_storage: unknown action ${1}"
+		exit 1
+		;;
+esac
+

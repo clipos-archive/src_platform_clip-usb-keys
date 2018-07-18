@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright © 2007-2018 ANSSI. All Rights Reserved.
+
+/sbin/generate_removable_conf.sh
+
+start-stop-daemon --start -x /sbin/usbadmin -- \
+                  -u mount_update \
+                  -s /mounts/user_priv/var/run/usb \
+                  -s /mounts/admin_priv/var/run/usb

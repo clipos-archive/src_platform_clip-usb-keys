@@ -1,0 +1,1303 @@
+# usb_storage.sub : common code for removable token scripts
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright © 2007-2018 ANSSI. All Rights Reserved.
+# Author: Vincent Strubel <clipos@ssi.gouv.fr>
+# Author: Mickaël Salaün <clipos@ssi.gouv.fr>
+# Based on code by EADS DCS
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version
+# 2 as published by the Free Software Foundation.
+#
+
+source "/etc/conf.d/clip"
+source "/etc/usbkeys.conf"
+
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
+
+source "/lib/clip/misc.sub"
+
+# UNIX utilities
+DIALOG="/usr/local/bin/xdialog.sh"
+NOTIFY="/usr/local/bin/notify.sh"
+JAILCAT="/update/bin/busybox cat"
+SSH_KEYGEN="/usr/local/bin/ssh-keygen"
+USER_ENTER="/sbin/vsctl user enter"
+
+#Root directory were all crypto stuffs are located
+ROOT_DIRECTORY="/home/user"
+EXPORT_KEYS_DIRECTORY="/home/usb_keys"
+CONF_FILE="/etc/usbkeys.conf"
+
+ZERO_FILE="/dev/zero"
+RANDOM_FILE="/dev/urandom"
+DEV_MAPPER_PATH="/dev/mapper"
+USB_STATUS="/usr/local/var/usb_status"
+ICON_MOUNT="/usr/local/share/icons/device-notifier.png"
+[[ -f "${ICON_MOUNT}" ]] || ICON_MOUNT="/usr/local/share/fbpanel/images/device-notifier.png"
+USB_LOCKFILE="/var/lock/clip-usb.lock"
+
+STR_CLIP="clip"
+STR_ANY="any"
+
+
+if [[ -e "/var/run/removable-storage.conf" ]] ; then
+	source "/var/run/removable-storage.conf"
+else
+	source "/etc/removable-storage.conf"
+fi
+
+# Insert extra definitions here
+PRIVUSER_JAILS=( "${USER_JAILS[@]}" "${AUDIT_JAILS[@]}" "${ADMIN_JAILS[@]}" )
+
+ALL_JAILS=( "${PRIVUSER_JAILS[@]}" )
+
+DEVTYPE_NAME="${DEVTYPE^^}"
+
+#User logged file
+MTAB_PATH="/var/run"
+LASTDEV_FILE="/var/run/lastdev_${DEVTYPE}"
+
+#Info sector full size
+SECTOR_SIZE=1024
+#ID size
+SECTOR_ID_SIZE=4
+#Metadata size (unused ATM)
+SECTOR_METADATA_SIZE=32
+#Symetric key encrypted size with RSA 2048
+SECTOR_SYM_KEY_CRYPT_SIZE=256
+#Signature size with RSA 1536
+SECTOR_SIGNATURE_SIZE=256
+#Info sector data size ( ID + KsymEncrypted + Sig)
+SECTOR_DATA_SIZE=548
+#RSA key sizes (bits)
+RSA_SIZE=2048
+
+#Info sector padding size
+typeset -i SECTOR_PADD_SIZE=${SECTOR_SIZE}-${SECTOR_DATA_SIZE}
+
+#Symetric Key size
+USER_SYM_KEY_SIZE=48
+
+#Common base name for mapped devices
+BASE_VIRTUAL_NAME="stockage_amovible"
+
+#Common error messages
+ERROR_XDIALOG="Impossible d'afficher la fenêtre d'information"
+
+ERROR_GET_LEVEL="Echec lors de la récupération du niveau de securité"
+ERROR_META_TYPE="Format de métadonnées non reconnu"
+ERROR_GET_USER="Echec lors de la récupération de l'utilisateur actif"
+ERROR_GET_UID="Impossible de récuperer l'uid de l'utilisateur connecté"
+ERROR_GET_DEVINFO="Impossible de lire les informations du support"
+ERROR_INVALID_LEVEL_VALUE="Valeur d'identifiant de niveau invalide"
+
+ERROR_NO_CONF="Fichier ${CONF_FILE} absent ou illisible"
+ERROR_BAD_CONF="Fichier ${CONF_FILE} incomplet"
+ERROR_DEV_TYPE="Type de support non reconnu :" 
+ERROR_DEV_ABSENT="Aucun support ${DEVTYPE_NAME} n'est présent dans le lecteur"
+
+ERROR_CLEARTEXT="Les supports non chiffrés ne sont pas autorisés au niveau"
+ERROR_MOUNTED="Un support ${DEVTYPE_NAME} est déjà monté dans la cage"
+
+ERROR_BUILD_HASH="Echec lors de la création du hash pour la vérification de la signature"
+ERROR_INVALID_SIGNATURE="Echec lors de la vérification de signature"
+
+ERROR_BAD_LEVEL="Niveau demandé différent du niveau lu"
+ERROR_LEVEL_ANY="Les supports USB tous niveaux ne sont pas autorisés par la configuration du poste"
+
+ERROR_BLOCKDEV="Echec lors de la récuperation de la taille du périphérique de stockage de masse"
+
+ERROR_PASSPHRASE="Echec de la saisie du mot de passe"
+ERROR_DERIV="Echec lors de la dérivation de mot de passe"
+
+ERROR_NOKEYS="Les clés cryptographiques ne sont pas encore générees pour le niveau"
+
+ERROR_NSMOUNT="Echec lors du montage du support ${DEVTYPE_NAME} dans la cage"
+ERROR_NSUMOUNT="Echec du démontage du support ${DEVTYPE_NAME} dans la cage"
+ERROR_CRYPT_MAT="Matériel cryptographique absent"
+ERROR_VIRTUAL_DEVICE="Périphérique virtuel absent"
+ERROR_RM_DMCOPY="Impossible de supprimer le périphérique temporaire"
+ERROR_VDEV_CREATE="Echec lors de la création du périphérique virtuel"
+ERROR_VDEV_REMOVE="Echec lors de la suppression du périphérique virtuel"
+ERROR_PART_SIZE="Echec lors de la récupération de la taille de la partition"
+
+ERROR_NO_SRCDEV="Impossible de déterminer le peripherique source"
+ERROR_LOCK="Impossible d'obtenir le verrou"
+
+
+#Common debug messages
+DEBUG_BLOCKDEV="Taille de partition obtenue"
+DEBUG_LEVEL_EXTRACT="Niveau extrait"
+DEBUG_SIGNATURE="Signature valide"
+DEBUG_NSMOUNT="Montage effectue dans la cage"
+DEBUG_NSUMOUNT="Demontage effectue dans la cage"
+
+DEBUG_FIRST_SECTOR="Premier secteur extrait"
+DEBUG_LAST_SECTOR="Dernier secteur extrait"
+DEBUG_SECTOR_CLEAR="Secteurs d'information identiques"
+
+DEBUG_PASSPHRASE="Passphrase saisie"
+
+DEBUG_VDEV_CREATE="Creation du peripherique virtuel"
+
+function x11_msg()
+{
+	local title="${1}"
+	local message="${2}"
+	local yesno="${3}"
+	
+	[[ -n "${CURRENT_UID}" ]] || get_connected_user
+	if [[ -z "${yesno}" ]]; then
+		${USER_ENTER} -u "${CURRENT_UID}" -- ${DIALOG} "${AUTHORITY}" --title "${title}" --left --wrap --msgbox "${message}" 0 0
+		return 0
+	else
+		${USER_ENTER} -u "${CURRENT_UID}" -- ${DIALOG} "${AUTHORITY}" --title "${title}" --left --wrap --yesno "${message}" 0 0 || return 1
+		return 0
+	fi
+}
+
+
+function errmsg()
+{
+	logger -i -s -p daemon.error -t "ERR ${SCRIPT_NAME}" <<EOF
+${1}
+EOF
+
+	[[ -n "${CURRENT_USER}" ]] || exit -1
+
+	x11_msg "${XDIALOG_ERROR_TITLE}" "Erreur : ${1}." 
+}
+
+function error()
+{
+	if [[ "$(type -t clean_up)" == "function" ]]; then
+		clean_up
+	fi
+
+	errmsg "${1}"
+
+	exit -1
+}
+
+function warn_nox11()
+{
+	logger -i -s -p daemon.warning -t "WARN ${SCRIPT_NAME}" <<EOF
+${1}
+EOF
+}
+
+function warn()
+{
+	logger -i -s -p daemon.warning -t "WARN ${SCRIPT_NAME}" <<EOF
+${1}
+EOF
+	${USER_ENTER} -u "${CURRENT_UID}" -- \
+	    ${NOTIFY} "${AUTHORITY}" -u critical -t 10000 \
+	    -i "/usr/local/share/icons/dialog-warning.png" \
+	    -- "Support USB" "${1}"
+}
+
+function info()
+{
+	logger -i -s -p daemon.info -t "${SCRIPT_NAME}" <<EOF
+${1}
+EOF
+	[[ -n "$2" ]] && ${USER_ENTER} -u "${CURRENT_UID}" -- \
+		  ${NOTIFY} "${AUTHORITY}" -u normal -t 10000 \
+		  -i "/usr/local/share/icons/dialog-info.png" \
+		  -- "Support USB" "${1}"
+}
+
+function debug()
+{
+	logger -i -s -p daemon.debug -t "${SCRIPT_NAME}" <<EOF
+${1}
+EOF
+}
+
+function inc_usb_status()
+{
+	(
+		flock -s 200
+		local level="$(head -n 1 "${USB_STATUS}" | cut -f2 -d' ')"
+		[[ -z "${level}" ]] && level=0
+		let "level+=1"
+		echo "level: ${level}" > "${USB_STATUS}"
+	) 200>>"${USB_STATUS}"
+}
+
+function dec_usb_status()
+{
+	(
+		flock -s 200
+		local level="$(head -n 1 "${USB_STATUS}" | cut -f2 -d' ')"
+		[[ -z "${level}" ]] && level=0
+		if [[ ${level} -lt 1 ]]; then
+			level=0
+		else 
+			let "level-=1"
+		fi
+		echo "level: ${level}" > "${USB_STATUS}"
+	) 200>>"${USB_STATUS}"
+}
+
+function get_jail_name()
+{
+	local jail="${1}"
+
+	local name="${JAIL_NAMES[${jail}]}"
+
+	echo -n "${name:-${jail}}"
+}
+
+function get_android_device()
+{
+	local devinfo="${1}"
+	local title="Mobile Android"
+	local message="Veuillez activer votre montage sur le mobile Android [${devinfo}]."
+	
+	# Only works if device already activated
+	if ! dd if="${BASE_DEVICE}" of="/dev/null" bs=512 count=1 2>/dev/null; then
+		if ! x11_msg "${title}" "${message}" "yesno"; then
+			debug "Android mounting canceled"
+			exit 1
+		fi
+	fi
+}
+
+set_device_variables() {
+	local action="$1"
+	local i
+
+	DEVICE_DATA=""
+	DEVICE_META=""
+
+	local prefix=""
+	if _is_sdcard "${BASE_DEVICE}"; then
+		prefix="p"
+	fi
+	for i in "${prefix}1" "${prefix}2" "${prefix}3" "${prefix}4" ""; do
+		if check_device "${BASE_DEVICE}${i}"; then
+			DEVICE_DATA="${BASE_DEVICE}${i}"
+			break
+		fi
+	done
+	
+	[[ "${DEVICE_DATA}"  == "${BASE_DEVICE}${prefix}1" ]] && DEVICE_META="${BASE_DEVICE}${prefix}2" # Possibly initialized
+
+	case "${action}" in
+		add)
+			[[ -n "${DEVICE_DATA}" ]] || error "${ERROR_DEV_ABSENT}"
+			;;
+		del)
+			if [[ -z "${DEVICE_DATA}" ]]; then # Encrypted device
+				DEVICE_DATA="${BASE_DEVICE}${prefix}1"
+				DEVICE_META="${BASE_DEVICE}${prefix}2"
+			fi
+			;;
+	esac
+}
+
+function get_hotplug_device_add()
+{
+	local -i num=0
+	while [[ ! -d "/sys/${DEVPATH}/device" ]]; do
+		if [[ ${num} -ge 5 ]]; then
+			error "Time-out waiting for device"
+		fi
+		debug "Waiting for sysfs"
+		sleep 1
+		num=num+1
+	done
+
+	BASE_DEVICE="/dev/${DEVPATH##*/}"
+
+	local vendor model product
+	vendor="$(get_dev_vendor)"
+	model="$(get_dev_model)"
+	product="$(get_dev_product)"
+
+	debug "hotplug device info: ${vendor}|${model}|${product}."
+
+	local product_os="$(echo "${product}"|cut -f2 -d_ )"
+	if [[ "${product_os}" == "Android" ]]; then
+		debug "Android detected"
+		get_android_device "${vendor}: ${model}"
+	fi
+
+	debug "add device: ${DEVPATH} - BASE_DEVICE: ${BASE_DEVICE}"
+
+	set_device_variables add
+	debug "add device: ${DEVICE_DATA}"
+}
+
+function get_hotplug_device_del()
+{
+	debug "del device: ${DEVPATH}"
+	BASE_DEVICE="/dev/${DEVPATH##*/}"
+
+	set_device_variables del
+	return 0
+}
+
+function get_available_device()
+{
+	[[ -f "${LASTDEV_FILE}" ]] || return 1
+	BASE_DEVICE="$(< "${LASTDEV_FILE}")"
+	[[ -n "${BASE_DEVICE}" ]] || return 1
+	set_device_variables
+}
+
+function get_device_level()
+{
+	local nofail="${1}"
+	if [[ -z "${DEVICE_META}" ]]; then
+		[[ -z "${nofail}" ]] && error "get_device_level: DEVICE_META undefined"
+		debug "get_device_level: DEVICE_META undefined"
+		return 1
+	fi
+	# test type of partition
+	local metatype="$(sfdisk -l "${BASE_DEVICE}" | awk -vdev="${DEVICE_META}" '$1 == dev {print $6}')"
+	if [[ -z "${metatype}" || "${metatype}" != "da" ]]; then
+		[[ -z "${nofail}" ]] && error "${ERROR_META_TYPE}"
+		debug "${DEVICE_META} is not a CLIP metadata partition"
+		return 1
+	fi
+		
+	#get security level
+	CURRENT_LEVEL="$(dd if=${DEVICE_META} bs=1 count=${SECTOR_ID_SIZE} 2>/dev/null)"
+	if [[ $? -ne 0 ]]; then
+		[[ -z "${nofail}" ]] && error "${ERROR_GET_LEVEL}"
+		debug "invalid device level"
+		return 1
+	fi
+	return 0
+}
+
+function get_device_from_file()
+{
+	local var="${DEVTYPE_NAME}_DEVICE"
+
+	local device="$(eval echo \${${var}})"
+	[[ -n "${device}" ]] || error "${ERROR_BAD_CONF}"
+
+	case "${DEVTYPE}" in
+		"cdrom")
+			DEVICE_DATA="${device}"
+			;;
+		"usb")
+			BASE_DEVICE="${device}"
+			set_device_variables
+			;;
+		*)
+			error "${ERROR_DEV_TYPE} ${DEVTYPE}"
+			;;
+	esac
+}
+
+function check_level_authorized()
+{
+	if [[ "${CURRENT_STR_LEVEL}" == "${STR_ANY}" ]]; then
+		if [[ "${USB_LEVEL_ANY}" == "yes" ]]; then
+			return 0
+		else
+			echo "${BASE_DEVICE}" > "${LASTDEV_FILE}"
+			error "${ERROR_LEVEL_ANY}"
+		fi
+	fi
+
+	if [[ "${CLEARTEXT_MOUNT}" == "yes" ]]; then
+		[[ -f "${CONF_FILE}" ]] || error "${ERROR_NO_CONF}"
+		echo "${CLEARTEXT_LEVELS}" | grep -wq "${CURRENT_STR_LEVEL}" \
+			|| error "${ERROR_CLEARTEXT} $(get_jail_name ${CURRENT_STR_LEVEL})"
+	fi
+}
+
+function get_string_level()
+{
+	local nofail="${1}"
+	local key
+	if [[ -z "${CURRENT_LEVEL}" ]]; then
+		[[ -z "${nofail}" ]] && error "get_string_level: CURRENT_LEVEL undefined"
+		debug "current level undefined"
+		return 1
+	fi
+
+
+	CURRENT_STR_LEVEL=""
+	CLEARTEXT_MOUNT=""
+	for key in "${!SIGNED_IDS[@]}"; do
+		if [[ "${CURRENT_LEVEL}" == "$(echo -ne "${SIGNED_IDS[$key]}")" ]]; then
+			CURRENT_STR_LEVEL="${key}"
+			CLEARTEXT_MOUNT="yes"
+			break
+		fi
+	done
+	if [[ -z "${CURRENT_STR_LEVEL}" ]]; then
+		for key in "${!ENCRYPTED_IDS[@]}"; do
+			if [[ "${CURRENT_LEVEL}" == "$(echo -ne "${ENCRYPTED_IDS[$key]}")" ]]; then
+				CURRENT_STR_LEVEL="${key}"
+				break
+			fi
+		done
+	fi
+
+	if [[ -z "${CURRENT_STR_LEVEL}" ]]; then
+		[[ -z "${nofail}" ]] && error "${ERROR_INVALID_LEVEL_VALUE} : ${CURRENT_LEVEL}"
+		debug "unknown level"
+		return 1
+	fi
+
+	check_level_authorized
+
+	debug "${DEBUG_LEVEL_EXTRACT}: ${CURRENT_STR_LEVEL}"
+	return 0
+}
+
+
+function extract_level()
+{
+	get_device_level
+
+	get_string_level
+}
+
+function test_level()
+{
+	get_device_level "nofail" || return 1
+
+	get_string_level "nofail" || return 1
+
+	return 0
+}
+
+function get_connected_user()
+{
+	AUTHORITY="/home/user/.Xauthority"	# SLIM
+
+	CURRENT_USER="$(current_user)"
+	[[ -n "${CURRENT_USER}" ]] || error "${ERROR_GET_USER}"
+	
+	CURRENT_UID="$(id -u "${CURRENT_USER}")"
+	[[ -n "${CURRENT_UID}" ]] || error "${ERROR_GET_UID}"
+
+	CURRENT_USER_TYPE="$(get_user_type "${CURRENT_USER}")"
+	CURRENT_USER_TYPE="${CURRENT_USER_TYPE/nomad/user}"
+}
+
+# Set up user key paths
+
+function get_user_paths()
+{
+	#base dir of isolated user data in the core
+	ROOT_USER="${ROOT_DIRECTORY}"
+	#base dir of user crypto materiel in the core
+	case "${CURRENT_STR_LEVEL}" in
+		rm_*)
+			ROOT_USER_KEYS="${ROOT_USER}/.keys/${CURRENT_STR_LEVEL}"
+			;;
+		*)
+			ROOT_USER_KEYS="${ROOT_USER}/.keys"
+			;;
+	esac
+	#asym encryption user key (private) in the core
+	USER_CRYPT_KEYS="${ROOT_USER_KEYS}/crypt"
+	CRYPT_PRV_KEY="${USER_CRYPT_KEYS}/rsa.prv"
+	CRYPT_PUB_KEY="${USER_CRYPT_KEYS}/rsa.pub"
+	#signing user keys (public) in the core
+	USER_SIGN_KEYS="${ROOT_USER_KEYS}/sig"
+	SIGN_PRV_KEY="${USER_SIGN_KEYS}/rsa.prv"
+	SIGN_PUB_KEY="${USER_SIGN_KEYS}/rsa.pub"
+}
+
+# Get user and set up her key paths
+
+function get_user()
+{
+	get_connected_user
+
+	get_user_paths
+}
+
+function get_jail_by_level()
+{
+	local lvl="${1}"
+	local dir="${2}"
+
+	case "${lvl}" in
+		"any")
+			JAIL="user"
+			MOUNT_POINT="/mnt/${DEVTYPE}"
+			DEV_COPY_PATH="/mounts/${lvl}_priv/dev"
+			;;
+		rm_*)
+			JAIL="${lvl}"
+			# RM: we mount in the USER view
+			MOUNT_POINT="/user/mnt/${DEVTYPE}"
+			DEV_COPY_PATH="/mounts/vsdev/${JAIL}/jail_devs"
+			;;
+		*)
+			JAIL="${lvl}"
+			MOUNT_POINT="/mnt/${DEVTYPE}"
+			DEV_COPY_PATH="/mounts/${lvl}_priv/dev"
+			;;
+	esac
+
+	DISP_JAIL="$(get_jail_name "${JAIL}")"
+	XID="$(< "/etc/jails/${JAIL}/context")"
+	MTAB="${MTAB_PATH}/${JAIL}.mtab"
+	DM_COPY_PATH="${DEV_COPY_PATH}/mapper"
+}
+
+function get_jail()
+{
+	local dir="${1:-mount}"
+
+	[[ -n "${CURRENT_STR_LEVEL}" ]] \
+		|| error "get_jail: current level is undefined"
+
+	get_jail_by_level "${CURRENT_STR_LEVEL}" "${dir}" || return 1
+}
+
+function get_jail_device_by_level()
+{
+	local lvl="${1}"
+
+	get_jail_by_level "${lvl}"
+
+	local dev="$(awk -vmnt="${MOUNT_POINT}" '$2 == mnt { print $1 }' "${MTAB}")"
+	[[ -n "${dev}" ]] || return 1
+
+	local prefix=""
+	if _is_sdcard "${src_dev}"; then
+		prefix="p"
+	fi
+
+	if [[ "${dev#${DEV_MAPPER_PATH}}" != "${dev}" ]] ; then
+		# This is an encrypted volume
+		local src_dev="$(cryptsetup status "${dev}" \
+				| sed -n '/device/s/[ ]*device:[ ]*//p')"
+		# Don't check for device presence here - won't work if it was e.g. unplugged
+		# during suspend
+		DEVICE_DATA="${src_dev}"
+		BASE_DEVICE="${src_dev%1}"
+		DEVICE_META="${BASE_DEVICE}${prefix}2"
+	else
+		DEVICE_DATA="${dev}"
+		BASE_DEVICE="${dev%1}"
+		DEVICE_META="${BASE_DEVICE}${prefix}2"
+	fi
+	return 0
+}
+
+function get_key_level()
+{
+	local title="${1}"
+	local msg="${2}"
+	local levels=""
+	local -a jails
+
+	case "${CURRENT_USER_TYPE}" in
+		"admin|audit")
+			jails=( "${STR_CLIP}" )
+			;;
+		"privuser")
+			jails=( "${RM_JAILS[@]}" "${STR_CLIP}" )
+			;;
+		*)
+			jails=( "${RM_JAILS[@]}" )
+			;;
+	esac
+
+	local -i num=0 
+	local -i size=9
+	local jail
+	for jail in "${jails[@]}"; do
+		num=num+1
+		size=size+2
+		local jailname="Niveau $(get_jail_name "${jail}")"
+
+		levels="${levels} ${jail} \"${jailname}\" 0"
+	done
+
+	if [[ "${USB_LEVEL_ANY}" == "yes" ]]; then
+		num=num+1
+		size=size+2
+		local jailname="$(get_jail_name "${STR_ANY}")"
+		levels="${levels} ${STR_ANY} \"${jailname}\" 0"
+	fi
+
+	local level=""
+	level="$(echo ${levels} | xargs ${USER_ENTER} -u "${CURRENT_UID}" \
+			-- ${DIALOG} "${AUTHORITY}" \
+			--title "${title}" \
+			--no-tags --left --stdout \
+			--radiolist "${msg}" ${size} 0 ${num})"
+	[[ $? -eq 0 && -n "${level}" ]] || return 1
+
+	debug "got level ${level}"
+	CURRENT_STR_LEVEL="${level}"
+	get_jail_by_level "${level}" "init"
+}
+
+
+function get_jail_popup()
+{
+	local title="${1}"
+	local msg="${2}"
+	local levels=""
+	local -a jails
+
+	case "${CURRENT_USER_TYPE}" in
+		"privuser")
+			jails=( "${PRIVUSER_JAILS[@]}" )
+			;;
+		"audit")
+			jails=( "${AUDIT_JAILS[@]}" )
+			;;
+		"admin")
+			jails=( "${ADMIN_JAILS[@]}" )
+			;;
+		*)
+			jails=( "${USER_JAILS[@]}" )
+			;;
+	esac
+
+	local -i num=0 
+	local -i size=9
+	local jail
+	for jail in "${jails[@]}"; do
+		grep -q "/mnt/${DEVTYPE}" "${MTAB_PATH}/${jail}.mtab" \
+			&& continue
+		num=num+1
+		size=size+2
+		local jailname="Niveau $(get_jail_name "${jail}")"
+
+		levels="${levels} ${jail} \"${jailname}\" 0"
+	done
+	local level=""
+	level="$(echo ${levels} | xargs ${USER_ENTER} -u "${CURRENT_UID}" \
+			-- ${DIALOG} "${AUTHORITY}" \
+			--title "${title}" \
+			--no-tags --left --stdout \
+			--radiolist "${msg}" ${size} 0 ${num})"
+	[[ $? -eq 0 && -n "${level}" ]] || return 1
+
+	debug "got level ${level}"
+	case "${level}" in 
+		"admin"|"update")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="admin"
+			;;
+		"audit")
+			[[ "${CURRENT_USER_TYPE}" == "privuser" ]] &&\
+				CURRENT_USER_TYPE="audit"
+			;;
+	esac
+	CURRENT_STR_LEVEL="${level}"
+	
+	get_jail_by_level "${level}"
+}
+
+function mount_available_usb()
+{
+	ret=0
+	local -a jails
+	case "${CURRENT_USER_TYPE}" in 
+		"privuser")
+			jails=( "${PRIVUSER_JAILS[@]}" )
+			;;
+		"audit")
+			jails=( "${AUDIT_JAILS[@]}" )
+			;;
+		"admin")
+			jails=( "${ADMIN_JAILS[@]}" )
+			;;
+		*)
+			jails=( "${USER_JAILS[@]}" )
+			;;
+	esac
+	debug "Jails ${jails}"
+
+	for block in /sys/block/sd* ; do
+		local bname="${block##*/}"
+		local test="$(< "${block}/removable")"
+		if [[ "$test" = "1" ]]; then
+			# device is removable
+			for jail in "${jails[@]}"; do
+				grep -q "^/dev/${bname}" "${MTAB_PATH}/${jail}.mtab" && bname=""
+			done
+			if [[ -n "${bname}" ]]; then
+				debug "got block device $bname"
+				ret=1
+				local vendor="$(get_dev_vendor "${block}")"
+				local model="$(get_dev_model "${block}")"
+				local msg="Le support ${DEVTYPE_NAME} ${vendor} ${model} n'est pas monté"
+				local title="Remontage du support ${DEVTYPE_NAME} ${vendor} ${model}"
+				${USER_ENTER} -u "${CURRENT_UID}" -- ${NOTIFY} "${AUTHORITY}" -u low -t 5000 -i "${ICON_MOUNT}" -- "${title}" "${msg}"
+				[[ $? -eq 0 ]] || error "${ERROR_XDIALOG}"
+				USB_LOCKED="true" DEVPATH="/block/${bname}" /lib/hotplug.d/usb_storage add
+			fi
+		fi
+	done
+	return $ret
+}
+
+function get_umount_level()
+{
+	local -a jails
+	local levels=""
+	local alllevels=""
+
+	case "${CURRENT_USER_TYPE}" in 
+		"privuser")
+			jails=( "${PRIVUSER_JAILS[@]}" )
+			;;
+		"audit")
+			jails=( "${AUDIT_JAILS[@]}" )
+			;;
+		"admin")
+			jails=( "${ADMIN_JAILS[@]}" )
+			;;
+		*)
+			jails=( "${USER_JAILS[@]}" )
+			;;
+	esac
+
+	local -i num=0 
+	local -i size=9
+	local lastj="" jail
+	for jail in "${jails[@]}"; do
+		grep -q "/mnt/${DEVTYPE}" "${MTAB_PATH}/${jail}.mtab" \
+			|| continue
+		num=num+1
+		size=size+2
+		local jailname="$(get_jail_name "${jail}")" 
+		lastj="${jail}"
+		levels="${levels} ${jail} ${jailname} on"
+		alllevels="${alllevels} ${jail}"
+	done
+
+	[[ ${num} -gt 0 ]] || error "Aucun support ${DEVTYPE_NAME} n'est actuellement monté"
+
+	local title="Démontage d'un support ${DEVTYPE_NAME}"
+	local msg="Des supports ${DEVTYPE_NAME} sont actuellement montés dans les niveaux suivants. 
+Décochez les niveaux pour lesquels vous souhaitez démonter un support."
+	local level=
+	if [[ "${num}" -eq 1 && -n "${lastj}" ]]; then
+		local disp_lev="$(get_jail_name "${lastj}")"
+		local msg="Un support ${DEVTYPE_NAME} est actuellement monté au niveau ${disp_lev}.
+Souhaitez-vous le démonter ?"
+		${USER_ENTER} -u "${CURRENT_UID}" \
+			-- ${DIALOG} "${AUTHORITY}" \
+			--title "${title}" \
+			--wrap \
+			--left --stdout \
+			--yesno "${msg}" ${size} 0 ${num}
+		if [[ $? -eq 0 ]]; then
+			level="${lastj}"
+		else
+			return 1
+		fi
+	else
+		local lev=
+		lev="$(echo ${levels} | xargs ${USER_ENTER} -u "${CURRENT_UID}" \
+			-- ${DIALOG} "${AUTHORITY}" \
+			--title "${title}" \
+			--no-tags --left --stdout --wrap --separator ' ' \
+			--checklist "${msg}" ${size} 100 ${num})"
+
+		[[ $? -eq 0 ]] || return 1
+		level=""
+		for l in ${alllevels}; do
+			echo "${lev}" | grep -wq "${l}" || level="${level} ${l}"
+		done
+		
+	fi
+	[[ -n "${level}" ]] || return 1
+	[[ -n "${CURRENT_STR_LEVEL}" ]] || CURRENT_STR_LEVEL="${level}"
+
+	debug "got unmount level ${level}"
+		
+	LEVEL_ASKED="${level}"
+	return 0
+}
+
+function check_keys()
+{
+	local nofail="${1}"
+	[[ -f "${CRYPT_PRV_KEY}" && -f "${CRYPT_PUB_KEY}" \
+		&& -f "${SIGN_PRV_KEY}" && -f "${SIGN_PUB_KEY}" ]] \
+			&& return 0
+
+	[[ -n "${nofail}" ]] && return 1
+	local disp_lev="$(get_jail_name "${CURRENT_STR_LEVEL}")"
+	error "${ERROR_NOKEYS} ${disp_lev}"
+}
+
+function check_device()
+{
+	local dev="${1}"
+	blockdev --getsz "${dev}" 1>/dev/null 2>&1
+	local r=$?
+
+	[[ $r -eq 0 ]] || debug "${dev}: ${ERROR_DEV_ABSENT}"
+	return $r
+}
+
+function check_device_usb()
+{
+	check_device "${BASE_DEVICE}" || error "${BASE_DEVICE}: ${ERROR_DEV_ABSENT}"
+}
+
+_get_dev_var() {
+	local var_name="$1"
+	local sysdev="${2:-/sys${DEVPATH}}"
+	if [[ -d "${sysdev}/device" ]]; then
+		sysdev="${sysdev}/device"
+	fi
+	local var_val ret=0
+	
+	# Take care of device informations (should avoid parenthesis and other special char, but legacy code...)
+	var_val="$(tr -cd '[[:print:]]' <"${sysdev}/${var_name}" 2>/dev/null)"
+	if [[ -z "${var_val}" ]]; then
+		ret=1
+	fi
+	echo -n "${var_val}"
+	return ${ret}
+}
+
+_is_sdcard() {
+	local dev="$(basename "${1:-${DEVPATH}}")"
+	if [[ "${dev%[0-9]}" == "mmcblk" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+get_dev_vendor() {
+	local dev="${1}"
+	if _is_sdcard "${dev}"; then
+		_get_dev_var "manfid" "${dev}"
+	else
+		_get_dev_var "vendor" "${dev}"
+	fi
+	return $?
+}
+
+get_dev_model() {
+	local dev="${1}"
+	if _is_sdcard "${dev}"; then
+		_get_dev_var "type" "${dev}"
+	else
+		_get_dev_var "model" "${dev}"
+	fi
+	return $?
+}
+
+get_dev_product() {
+	local dev="${1}"
+	if _is_sdcard "${dev}"; then
+		_get_dev_var "name" "${dev}"
+	else
+		# Second replace needed to deal with potential cascading usb hubs
+		dev="$(basename "${dev:-${DEVPATH}}")"
+		dev="$(readlink -f "/sys/block/${dev}" | sed -e 's|usb\([0-9]\+/[^:]\+\).*|usb\1|' -e 's|\(.*\)/[-0-9.]\+|\1|')"
+		_get_dev_var "product" "${dev}"
+	fi
+	return $?
+}
+
+get_dev_serial() {
+	local dev="${1}"
+	if _is_sdcard "${dev}"; then
+		_get_dev_var "serial" "${dev}"
+	else
+		# Second replace needed to deal with potential cascading usb hubs
+		dev="$(basename "${dev:-${DEVPATH}}")"
+		dev="$(readlink -f "/sys/block/${dev}" | sed -e 's|usb\([0-9]\+/[^:]\+\).*|usb\1|' -e 's|\(.*\)/[-0-9.]\+|\1|')"
+		_get_dev_var "serial" "${dev}"
+	fi
+	return $?
+}
+
+function get_device_info() {
+	local dev="${1##*/}"
+
+	local usbpath model vendor serial
+
+	local sys="/sys/block/${dev}"
+	model="$(get_dev_model "${sys}")" || error "${sys}/device (model) ${ERROR_GET_DEVINFO}"
+	vendor="$(get_dev_vendor "${sys}")" || error "${sys}/device (vendor) ${ERROR_GET_DEVINFO}"
+	# Apparently, some tokens don't have a serial at all...
+	serial="$(get_dev_serial "${sys}")" || error "Le support USB connecté n'a pas de numéro de série"
+
+	echo -n "${vendor}:${model}:${serial}"
+}
+
+function check_signature()
+{
+	local nofail="${1}"
+	check_keys "${nofail}" || return 1
+	local level="$(get_jail_name "${CURRENT_STR_LEVEL}")"
+
+	local -i skip=$((${SECTOR_ID_SIZE}+${SECTOR_METADATA_SIZE}+${SECTOR_SYM_KEY_CRYPT_SIZE}))
+	local hash1 hash2 devinfo
+
+	# Build hexa hash of ID and encrypted symetric key
+	hash2="$(dd if=${DEVICE_META} bs=1 count=${skip} 2>/dev/null \
+		| openssl dgst -sha256 2>/dev/null | cut -d' ' -f 2)"
+	[[ $? -eq 0 && -n "${hash2}" ]] \
+		|| error "${ERROR_INVALID_SIGNATURE} : hash 2 vide (support de niveau ${level})"
+
+	devinfo="$(get_device_info "${BASE_DEVICE}")"
+	[[ $? -eq 0 ]] || error "${ERROR_GET_DEVINFO}"
+
+	debug "device info: ${devinfo}"
+	hash2="${devinfo}:${hash2}"
+
+	# Extract same hash from signature
+	hash1="$(dd if=${DEVICE_META} bs=1 count=${SECTOR_SIGNATURE_SIZE} \
+		skip=${skip} 2>/dev/null | openssl rsautl -verify -pubin \
+		-inkey ${SIGN_PUB_KEY} 2>/dev/null)"
+	if [[ $? -ne 0 || -z "${hash1}" ]]; then 
+		if [[ -z "${nofail}" ]]; then
+			error "${ERROR_INVALID_SIGNATURE} : hash 1 vide (support de niveau ${level})"
+		else
+			errmsg "${ERROR_INVALID_SIGNATURE} (support de niveau ${level})"
+			return 1
+		fi
+	fi
+
+	if [[ "${hash1}" != "${hash2}" ]]; then
+		debug "check_signature: expected ${hash2}, got ${hash1}"
+		error "${ERROR_INVALID_SIGNATURE} : hashes differents (support de niveau ${level})"
+	fi
+
+	debug "${DEBUG_SIGNATURE}"
+}
+
+function check_level()
+{
+	local level="${1}"
+	local cleartext="${2}"
+	local msg= title=
+	[[ -n "${level}" ]] || error "check_level: empty level"
+
+	if [[ "${level}" != "${CURRENT_STR_LEVEL}" ]]; then
+
+		msg="Niveau incorrect $(get_jail_name ${level})."
+		title="Verification du niveau $(get_jail_name ${CURRENT_STR_LEVEL})"
+
+		x11_msg "${title}" "${msg}"
+		[[ $? -eq 0 ]] || error "${ERROR_XDIALOG}"
+
+		error "${ERROR_BAD_LEVEL}"
+	fi
+
+	[[ "${cleartext}" == "nocheck" ]] && return 0
+	local cipher_nok="";
+	[[ -n "${cleartext}" && -z "${CLEARTEXT_MOUNT}" ]] && cipher_nok="yes"
+	[[ -z "${cleartext}" && -n "${CLEARTEXT_MOUNT}" ]] && cipher_nok="yes"
+	if [[ -n "${cipher_nok}" ]]; then
+		msg="Chiffrement incorrect $(get_jail_name ${level})."
+		title="Verification du niveau $(get_jail_name ${CURRENT_STR_LEVEL})"
+
+		x11_msg "${title}" "${msg}"
+		[[ $? -eq 0 ]] || error "${ERROR_XDIALOG}"
+
+		error "${ERROR_BAD_LEVEL}"
+	fi
+}
+
+function get_passphrase()
+{
+	local op="${1}"
+	local lev="$(get_jail_name "${CURRENT_STR_LEVEL}")"
+	local pass
+	if [[ -n "${2}" ]]; then
+		msg="Veuillez confirmer le mot de passe de protection des supports de niveau ${lev}\n(opération demandée: ${op})"
+	else
+		msg="Veuillez saisir le mot de passe de protection des supports de niveau ${lev}\n(opération demandée: ${op})"
+	fi
+	local title="Saisie du mot de passe ${lev}"
+
+	pass=$(${USER_ENTER} -u "${CURRENT_UID}" -- ${DIALOG} "${AUTHORITY}" \
+			--stdout --wrap --password --title "${title}" \
+			--inputbox "${msg}" 0 0)
+	if [[ $? -ne 0 || -z "${pass}" ]]; then
+		return 1
+	fi
+		
+	if [[ -n "${2}" ]]
+	then
+		PASSPHRASE_CONFIRM="${pass}"
+	else
+		PASSPHRASE="${pass}"
+	fi
+
+	debug "${DEBUG_PASSPHRASE} (${1})"
+}
+
+function gen_passphrase()
+{
+	local typ="${1}"
+	local base="${2}"
+	local suff=""
+	case "${typ}" in 
+		"enc")
+			suff="A"
+			;;
+		"sig")
+			suff="B"
+			;;
+		*)
+			error "${ERROR_DERIV}"
+			;;
+	esac
+			
+
+	local pass=""
+	pass="$(echo "${base}${suff}" | openssl dgst -sha256 | cut -d' ' -f 2)"
+	[[ $? -eq 0 ]] || error "${ERROR_DERIV}"
+
+	echo "${pass}"
+}
+
+function check_not_mounted()
+{	
+	local nofail="${1}"
+	local dev="$(awk -vmnt="${MOUNT_POINT}" '$2 == mnt { print $1 }' "${MTAB}")"
+	if [[ -n "${dev}" ]]; then 
+		[[ -z "${nofail}" ]] && error "${ERROR_MOUNTED} ${DISP_JAIL}"
+		errmsg "${ERROR_MOUNTED} ${disp_jail}"
+		return 1
+	fi
+	return 0
+}
+
+function map_device()
+{
+	if [[ -n "${CLEARTEXT_MOUNT}" ]]; then
+		VIRTUAL_DEVICE_FULL="${DEVICE_DATA}"
+		# Cas des clefs ou disquettes sans partitionnement
+		blockdev --getsz ${DEVICE_DATA} 1> /dev/null 2>&1
+		[[ $? -eq 0 ]] || VIRTUAL_DEVICE_FULL="${BASE_DEVICE}"
+		VIRTUAL_DEVICE="${VIRTUAL_DEVICE_FULL##*/}"
+		DEV_COPY="${DEV_COPY_PATH}/${VIRTUAL_DEVICE}"
+		DEV_COPY_DIR="${DEV_COPY_PATH}"
+		DEV_PATH="/dev"
+	else 
+
+		local part_size=$(blockdev --getsz ${DEVICE_DATA})
+		[[ $? -eq 0 ]] || error "${ERROR_PART_SIZE}"
+
+		local iv_off=0
+		local skip=0
+		local cipher="aes-lrw-benbi"
+		#virtual device used for further filesystem creation
+		VIRTUAL_DEVICE="${BASE_VIRTUAL_NAME}_${CURRENT_USER}_${JAIL}"
+		#full virtual device name
+		VIRTUAL_DEVICE_FULL="${DEV_MAPPER_PATH}/${VIRTUAL_DEVICE}"
+ 
+		#build device mapper table entry
+		DM_TABLE=$(echo -n 0 ${part_size} crypt ${cipher} ${SYM_KEY_HEXA} ${iv_off} ${DEVICE_DATA} ${skip})
+
+		#map virtual crypto device
+		local err=""
+		err="$(echo ${DM_TABLE} | dmsetup create ${VIRTUAL_DEVICE} 2>&1)"
+		[[ $? -eq 0 ]] || error "${ERROR_VDEV_CREATE} : ${err}"
+
+		#remove DM_COPY (if an error occured formerly)
+		DEV_COPY="${DM_COPY_PATH}/${VIRTUAL_DEVICE}"
+		DEV_COPY_DIR="${DM_COPY_PATH}"
+		DEV_PATH="/dev/mapper"
+	fi
+
+	[[ -e "${DEV_COPY}" ]] && rm "${DEV_COPY}"
+
+	debug "${DEBUG_VDEV_CREATE}"
+}
+
+function do_nsmount() {
+	local src="${1}"
+	local dst="${2}"
+	local xid="${3}"
+	local tpe="${4}"
+	local opts="${5}"
+	local uid="${6}"
+	local gid="${7}"
+
+
+	opts="${opts},nodev,nosuid,noexec"
+	# Filesystem rights:
+	case "${tpe}" in
+		vfat|ntfs)
+			opts="${opts},uid=${uid},gid=${gid},dmask=0077,fmask=0177"
+			;;
+		udf)
+			opts="${opts},uid=${uid},gid=${gid},umask=0077"
+			;;
+		iso9660)
+			# The *mode options are set by some disks
+			opts="${opts},uid=${uid},gid=${gid},mode=0400,dmode=0500"
+			;;
+		# Linux can't override ext2 rights...
+	esac
+	if [[ "${tpe}" == "ntfs" ]]; then
+		opts="${opts},no_def_opts,allow_other"
+
+		ntfs-3g -o "${opts}" --xid "${xid}" \
+			"${src}" "${dst}" \
+			|| return 1
+
+		# This should not be racy, since we do the whole thing under a mutex
+		echo "${src} ${dst} ntfs ${opts}" >> "${MTAB}" \
+			|| return 1
+	else
+		nsmount -t "${tpe}" -m "${MTAB}" \
+		        	-o "${opts}" -x ${xid} \
+		        	"${src}" "${dst}" \
+				&& return 0
+
+		# If first mount failed, run fsck.
+		local output="$(fsck -a "${src}")"
+		ret=$?
+		case $ret in
+			0)
+				debug "Pas d'erreur sur ${src}"
+				;;
+			1)
+				info "Le système de fichier endommagé ${tpe} du support USB a été réparé." "notify"
+				info "fsck output: ${output}" 			  
+				;;
+			2)
+				warn "Attention : le système de fichier endommagé ${tpe} du support USB a dû être modifié."
+				info "fsck output: ${output}" 			  
+				;;
+			*)
+				warn "Le système de fichier endommagé ${tpe} du support USB n'a pu être réparé ($ret) : montage en lecture seule."
+				opts="${opts},ro"
+				info "fsck output: ${output}" 			  
+				;;
+		esac
+
+		nsmount -t "${tpe}" -m "${MTAB}" \
+		        	-o "${opts}" -x ${xid} \
+		        	"${src}" "${dst}" \
+				|| return 1
+	fi
+
+	return 0
+}
+
+function mount_device()
+{
+	local -i ret=1
+	[[ -e "${VIRTUAL_DEVICE_FULL}" ]] || error "${ERROR_VIRTUAL_DEVICE}"
+
+	# Get the user id and the group id
+	# Note that the ADMINclip and AUDITclip user is not the same as the USERclip user.
+	local ruser="${USB_USERS[${JAIL}]}"
+	[[ -n "${ruser}" ]] || ruser="${CURRENT_USER}"
+
+	local uid=$(id -u ${ruser})
+	local gid=$(id -g ${ruser})
+	local types=""
+	local options=""
+
+	case "${DEVTYPE}" in
+		"usb")
+			types="vfat"
+			[[ -n "${CLEARTEXT_MOUNT}" ]] && types="vfat ext2 ext3 ext4 ntfs udf"
+			if [[ -n "${MOUNT_RO}" ]]; then
+				options="ro"
+			else
+				options="rw"
+				[[ -n "${CLEARTEXT_MOUNT}" ]] && options="${options},trace"
+			fi
+			;;
+		"cdrom")
+			types="iso9660 udf"
+			options="ro"
+			;;
+		*)
+			error "${ERROR_DEV_TYPE} ${DEVTYPE}"
+			;;
+	esac
+
+	tar -C ${DEV_PATH} -cf - ${VIRTUAL_DEVICE} | tar -C "${DEV_COPY_DIR}" -xf - 
+
+	# Perform the mount
+	for t in ${types}; do
+		blkid -p -n "${t}" "${VIRTUAL_DEVICE_FULL}" >/dev/null || continue
+		do_nsmount "${VIRTUAL_DEVICE_FULL}" "${MOUNT_POINT}" "${XID}" "${t}" \
+				"${options}" "${uid}" "${gid}" 
+		ret=$?
+		break
+	done
+
+	rm -f "${DEV_COPY}/${VIRTUAL_DEVICE}" || error "${ERROR_RM_DMCOPY}"
+	if [[ $ret -ne 0 ]]; then
+		[[ -z "${CLEARTEXT_MOUNT}" ]] && dmsetup remove 
+		error "${ERROR_NSMOUNT} ${DISP_JAIL}"
+	fi
+
+	debug "${DEBUG_NSMOUNT} ${JAIL}"
+
+	[[ "${DEVTYPE}" == "usb" ]] && inc_usb_status
+	local msg="Le support $(get_dev_vendor) $(get_dev_model) est monté"
+	[[ -n "${MOUNT_RO}" ]] && msg="${msg} en lecture seule"
+	msg="${msg} au niveau ${DISP_JAIL} sous /mnt/${DEVTYPE}"
+	local title="Montage du support ${DEVTYPE_NAME} au niveau ${DISP_JAIL}"
+
+	${USER_ENTER} -u "${CURRENT_UID}" -- ${NOTIFY} "${AUTHORITY}" -u low -t 5000 -i "${ICON_MOUNT}" -- "${title}" "${msg}"
+	[[ $? -eq 0 ]] || error "${ERROR_XDIALOG}"
+}
+
+function umount_device()
+{
+	local nomsg="${1}"
+
+	if [[ -n "${CLEARTEXT_MOUNT}" ]]; then
+		VIRTUAL_DEVICE_FULL="${DEVICE_DATA}"
+		VIRTUAL_DEVICE="${VIRTUAL_DEVICE_FULL##*/}"
+		DEV_COPY="${DEV_COPY_PATH}/${VIRTUAL_DEVICE}"
+	else	 
+		VIRTUAL_DEVICE="${BASE_VIRTUAL_NAME}_${CURRENT_USER}_${JAIL}"
+		VIRTUAL_DEVICE_FULL="${DEV_MAPPER_PATH}/${VIRTUAL_DEVICE}"
+		DEV_COPY="${DM_COPY_PATH}/${VIRTUAL_DEVICE}"
+	fi
+
+	# Perform the umount
+	if ! nsmount -u -m "${MTAB}" -x "${XID}" "${MOUNT_POINT}"; then
+		error "${ERROR_NSUMOUNT} ${DISP_JAIL}"
+	fi
+
+	debug "${DEBUG_NSUMOUNT} ${JAIL}"
+
+	# Remove the virtual device copy
+	[[ -e "${DEV_COPY}" ]] && rm "${DEV_COPY}"
+
+	VIRTUAL_DEVICE="${BASE_VIRTUAL_NAME}_${CURRENT_USER}_${JAIL}"
+	VIRTUAL_DEVICE_FULL="${DEV_MAPPER_PATH}/${VIRTUAL_DEVICE}"
+	if dmsetup info | grep -q "${VIRTUAL_DEVICE}"; then
+		debug "Recovering ${VIRTUAL_DEVICE}"
+		dmsetup remove "${VIRTUAL_DEVICE_FULL}" \
+			|| error "${ERROR_VDEV_REMOVE}"
+	fi
+
+	[[ -n "${nomsg}" ]] && return 0
+
+	[[ "${DEVTYPE}" == "usb" ]] && dec_usb_status
+
+	local msg="Vous pouvez maintenant retirer le support ${DEVTYPE_NAME}"
+	local title="Démontage du support ${DEVTYPE_NAME} de niveau ${DISP_JAIL}"
+
+	if ! ${USER_ENTER} -u "${CURRENT_UID}" -- ${NOTIFY} "${AUTHORITY}" -u low -t 5000 -i "${ICON_MOUNT}" -- "${title}" "${msg}"; then
+		error "${ERROR_XDIALOG}"
+	fi
+}
+
+

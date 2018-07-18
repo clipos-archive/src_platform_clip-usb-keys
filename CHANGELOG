@@ -1,0 +1,812 @@
+# CLIP ChangeLog for app-clip/clip-usb-keys
+
+*clip-usb-keys-2.11.0 (29 Feb 2016)
+
+  29 Feb 2016; ANSSI <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.11.0.ebuild, -clip-usb-keys-2.10.5.ebuild:
+  Add support for multiple command socket.
+  Listen by default in admin also.
+
+*clip-usb-keys-2.10.5 (03 Nov 2014)
+
+  03 Nov 2014; Hugo Chargois <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.5.ebuild, -clip-usb-keys-2.10.4.ebuild:
+  Show full mount point options for USB disks when clicking on the adeskbar
+  button, even if USB_MOUNT_CURRENT_LEVEL is true.
+
+*clip-usb-keys-2.10.4 (03 Jun 2014)
+
+  03 Jun 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.4.ebuild, -clip-usb-keys-2.10.3-r1.ebuild:
+  Fix missing path in certain call to user enter.
+
+*clip-usb-keys-2.10.3-r1 (20 May 2014)
+
+  20 May 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.3-r1.ebuild, -clip-usb-keys-2.10.3.ebuild:
+  Replace sys-apps/eject with a recent sys-apps/util-linux.
+
+*clip-usb-keys-2.10.3 (18 Apr 2014)
+
+  18 Apr 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.3.ebuild, -clip-usb-keys-2.10.2-r1.ebuild:
+  Redirect standard input/output to /dev/null when running scripts.
+
+*clip-usb-keys-2.10.2-r1 (25 Mar 2014)
+
+  25 Mar 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.2-r1.ebuild, -clip-usb-keys-2.10.2.ebuild:
+  Rbump since a version of 2.10.2 with a RDEPEND on device-mapper
+  has been merged in stable-4.4.0.
+
+*clip-usb-keys-2.10.2 (21 Mar 2014)
+
+  21 Mar 2014; Tony Cheneau <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.2.ebuild, -clip-usb-keys-2.10.1-r1.ebuild:
+  Fix a syntax error in mount_cdrom.sh that prevented CDROM from
+  being mounted correctly.
+
+*clip-usb-keys-2.10.1-r1 (20 Mar 2014)
+
+  20 Mar 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.1-r1.ebuild, -clip-usb-keys-2.10.1.ebuild:
+  Rbump (device-mapper -> lvm2).
+
+*clip-usb-keys-2.10.1 (03 Mar 2014)
+
+  03 Mar 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.1.ebuild, -clip-usb-keys-2.10.0.ebuild:
+  Support configuration of the UID under which removable storage
+  is mounted in a given jail, through the variable USB_USER
+  in /etc/jails/*/usb.storage.
+
+*clip-usb-keys-2.10.0 (04 Feb 2014)
+
+  04 Feb 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.10.0.ebuild, -clip-usb-keys-2.9.1.ebuild:
+  Change USB crypto export function to wrap the encryption 
+  key with a password, and export all private/public keys for
+  the required level. Add a crypto key import function, to 
+  import those same keys on another system.
+
+*clip-usb-keys-2.9.1 (03 Feb 2014)
+
+  03 Feb 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.9.1.ebuild, -clip-usb-keys-2.9.0.ebuild:
+  Some more code cleanup that I'd been keeping for the next
+  bump :).
+
+*clip-usb-keys-2.9.0 (31 Jan 2014)
+
+  31 Jan 2014; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.9.0.ebuild, -clip-usb-keys-2.8.2.ebuild:
+  Code cleanup.
+  Full SD card support (plain, signature and encryption).
+  Stricter device information parsing.
+
+*clip-usb-keys-2.8.2 (06 Jan 2014)
+
+  06 Jan 2014; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.8.2.ebuild, -clip-usb-keys-2.8.1.ebuild:
+  Code cleanup. Fix encrypted USB token initialization.
+
+*clip-usb-keys-2.8.1 (31 Dec 2013)
+
+  31 Dec 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.8.1.ebuild, -clip-usb-keys-2.8.0.ebuild:
+  Fix some leftovers from previous change, remove CLIP_LEVEL_JAIL
+  kludge (each jail must now have its own ENCRYPTED_ID/SIGNED_ID,
+  no more 'clip' level jails).
+  Manage jail names through another associative array.
+
+*clip-usb-keys-2.8.0 (30 Dec 2013)
+
+  30 Dec 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.8.0.ebuild, -clip-usb-keys-2.7.8.ebuild:
+  Modularize jail definitions, by moving them into 
+  /etc/jails/*/usb.storage, and using /var/run/removable-storage.conf
+  as config file, generated at boot time (usbadmin start) by 
+  parsing those /etc/jails/ files.
+
+*clip-usb-keys-2.7.8 (12 Nov 2013)
+
+  12 Nov 2013; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.8.ebuild, -clip-usb-keys-2.7.7.ebuild:
+  Fix ext* mount and add ext3 support.
+  Clean filesystem detection.
+
+*clip-usb-keys-2.7.7 (14 Oct 2013)
+
+  14 Oct 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.7.ebuild, -clip-usb-keys-2.7.6.ebuild,
+  files/_debian/postinst, -files/_debian/prerm:
+  Switch to local.d snippets to start usbadmin.
+
+*clip-usb-keys-2.7.6 (14 Oct 2013)
+
+  14 Oct 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.6.ebuild, -clip-usb-keys-2.7.5.ebuild,
+  files/_debian/postinst, files/_debian/prerm:
+  Better compatibility of init script with openrc.
+
+*clip-usb-keys-2.7.5 (05 Aug 2013)
+
+  05 Aug 2013; ANSSI <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.5.ebuild, -clip-usb-keys-2.7.4.ebuild:
+  Add support ext4.
+
+*clip-usb-keys-2.7.4 (25 Apr 2013)
+
+  25 Apr 2013; ANSSI <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.4.ebuild, -clip-usb-keys-2.7.3.ebuild:
+  Add support mmc block devices.
+
+*clip-usb-keys-2.7.3 (09 Apr 2013)
+
+  09 Apr 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.3.ebuild, -clip-usb-keys-2.7.2.ebuild:
+  Add optional support for level 'any' for usb tokens.
+
+*clip-usb-keys-2.7.2 (14 Mar 2013)
+
+  14 Mar 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.2.ebuild, -clip-usb-keys-2.7.1.ebuild:
+  Do not run fsck unless mounting fails - otherwise the 
+  overhead is just too big.
+
+*clip-usb-keys-2.7.1 (06 Mar 2013)
+
+  06 Mar 2013; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.1.ebuild, -clip-usb-keys-2.7.0.ebuild:
+  Set default umask for mounts when possible.
+  Fix admin and audit group mount property.
+  Add sys-apps/pv to dependencies.
+
+*clip-usb-keys-2.7.0 (19 Feb 2013)
+
+  19 Feb 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.7.0.ebuild, -clip-usb-keys-2.6.19.ebuild:
+  Remap jail names to more user-intelligible versions.
+  Add progress bar when erasing a key.
+  Make key generation, key export and USB init prompt 
+  interactively for level, instead of getting it from
+  the command line.
+
+*clip-usb-keys-2.6.19 (04 Feb 2013)
+
+  04 Feb 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.19.ebuild, -clip-usb-keys-2.6.18.ebuild:
+  Add udf support for USB mass storage (added by Yves-Alexis
+  Perez, go bug him if this sets your fancy usb token on fire).
+  Fix typo in popup message when USB_MOUNT_CURRENT_LEVEL is 
+  set.
+
+*clip-usb-keys-2.6.18 (07 Jan 2013)
+
+  07 Jan 2013; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.18.ebuild, -clip-usb-keys-2.6.17.ebuild:
+  Add patch from Florent Chabaud on clip-test #593 - add a 
+  fsck check on removable filesystems.
+
+*clip-usb-keys-2.6.17 (24 Jul 2012)
+
+  24 Jul 2012; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.17.ebuild, -clip-usb-keys-2.6.16.ebuild:
+  Fix spurious error messages in mount_usb.sh
+
+*clip-usb-keys-2.6.16 (10 Jul 2012)
+
+  10 Jul 2012; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.16.ebuild, -clip-usb-keys-2.6.15.ebuild:
+  Add mount_usb.sh script.
+
+*clip-usb-keys-2.6.15 (17 Apr 2012)
+
+  17 Apr 2012; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.15.ebuild, -clip-usb-keys-2.6.14.ebuild:
+  Fix CD-ROM mounting. 
+
+*clip-usb-keys-2.6.14 (11 Apr 2012)
+
+  11 Apr 2012; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.14.ebuild, -clip-usb-keys-2.6.13-r1.ebuild:
+  Fix build with gcc-4.6 (warning).
+
+  24 Feb 2012; Vincent Strubel <clipos@ssi.gouv.fr>
+  clip-usb-keys-2.6.13-r1.ebuild:
+  Add missing core-rm IUSE.
+
+*clip-usb-keys-2.6.13-r1 (22 Feb 2012)
+
+  22 Feb 2012; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.13-r1.ebuild, -clip-usb-keys-2.6.13.ebuild:
+  Add usbkeys.conf to conffiles list.
+
+*clip-usb-keys-2.6.13 (22 Feb 2012)
+
+  22 Feb 2012; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.13.ebuild, -clip-usb-keys-2.6.12.ebuild:
+  Fix usbkeys.conf missing quotes.
+  Fix uninitialized USB detection.
+
+*clip-usb-keys-2.6.12 (21 Dec 2011)
+
+  21 Dec 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.12.ebuild, -clip-usb-keys-2.6.11.ebuild:
+  Error out explicitly when attempting to sign a usb token 
+  which has no serial number.
+  Properly handle the case when no uninitialized tokens are 
+  authorized.
+
+*clip-usb-keys-2.6.11 (05 Dec 2011)
+
+  05 Dec 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.11.ebuild, -clip-usb-keys-2.6.10-r2.ebuild,
+  files/_debian/postinst:
+  Add a new variable to usbkeys.conf : RO_LEVELS - ro mounts must
+  now be explicitly authorized.
+  Re-prompt user for decryption password when decryption fails.
+  Support unmounting multiple tokens in one go.
+
+*clip-usb-keys-2.6.10-r2 (14 Nov 2011)
+
+  14 Nov 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.10-r2.ebuild, -clip-usb-keys-2.6.10-r1.ebuild,
+  files/_debian/postinst:
+  Properly quote variable definitions in /etc/usbkeys.conf.
+
+*clip-usb-keys-2.6.10-r1 (14 Nov 2011)
+
+  14 Nov 2011; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.10-r1.ebuild, -clip-usb-keys-2.6.10.ebuild:
+  Fix postinst grep.
+
+*clip-usb-keys-2.6.10 (07 Nov 2011)
+
+  07 Nov 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.10.ebuild, -clip-usb-keys-2.6.9.ebuild:
+  Make mounting USB devices automatically in the currently 
+  displayed level the default only for clip-hermes configs -
+  generally speaking, CLIP still needs to be able to mount
+  USB devices in UPDATE or ADMIN.
+  Switch to sourcing /etc/usbkeys.conf rather than greping 
+  through it.
+
+*clip-usb-keys-2.6.9 (21 Oct 2011)
+
+  21 Oct 2011; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.9.ebuild, -clip-usb-keys-2.6.8.ebuild:
+  Add current RM detection for USB device (if possible).
+  Don't ask user confirmation if MOUNT_CONFIRM is set.
+
+*clip-usb-keys-2.6.8 (29 Jul 2011)
+
+  29 Jul 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.8.ebuild, -clip-usb-keys-2.6.7.ebuild:
+  Refix serial number extraction regexp, broken by previous 
+  version.
+
+*clip-usb-keys-2.6.7 (20 Jul 2011)
+
+  20 Jul 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.7.ebuild, -clip-usb-keys-2.6.6.ebuild:
+  Fix negative 'return' values, no longer supported by bash-4.
+
+*clip-usb-keys-2.6.6 (30 Jun 2011)
+
+  30 Jun 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.6.ebuild, -clip-usb-keys-2.6.5.ebuild:
+  Misc fixes by Florent Chabaud:
+   - allow Android mounts to be cancelled
+   - fix for usb hubs
+   - fix usb token removal during suspend.
+
+*clip-usb-keys-2.6.5 (20 Jun 2011)
+
+  20 Jun 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.5.ebuild, -clip-usb-keys-2.6.4.ebuild:
+  Add Android mass storage support.
+
+*clip-usb-keys-2.6.4 (09 May 2011)
+
+  09 May 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.4.ebuild, -clip-usb-keys-2.6.3.ebuild:
+  Fix NTFS mount perms for devctl.
+
+*clip-usb-keys-2.6.3 (09 May 2011)
+
+  09 May 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.3.ebuild, -clip-usb-keys-2.6.2.ebuild:
+  Support mounting NTFS r/w with ntfs3g.
+
+*clip-usb-keys-2.6.2 (28 Apr 2011)
+
+  28 Apr 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.2.ebuild, -clip-usb-keys-2.6.1.ebuild:
+  Properly define PATH in usb_storage.sub.
+
+*clip-usb-keys-2.6.1 (25 Mar 2011)
+
+  25 Mar 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.1.ebuild, -clip-usb-keys-2.6.0.ebuild:
+  Fix openssl -dgst calls for use with openssl-1.0.
+
+*clip-usb-keys-2.6.0 (17 Mar 2011)
+
+  17 Mar 2011; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.6.0.ebuild, -clip-usb-keys-2.5.11.ebuild:
+  Use newest script layout from hotplug-clip-2 + switch usb
+  ADD hotplug handler to the block device add call, instead
+  of scsi_device add.
+
+*clip-usb-keys-2.5.11 (08 Nov 2010)
+
+  08 Nov 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.11.ebuild, -clip-usb-keys-2.5.10.ebuild:
+  Fix for persistent USER jail.
+
+*clip-usb-keys-2.5.10 (04 Nov 2010)
+
+  04 Nov 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.10.ebuild, -clip-usb-keys-2.5.9.ebuild:
+  Fix hotplug.DEL.sh level extraction. Fix some unescaped
+  bash globbing sequences.
+
+*clip-usb-keys-2.5.9 (03 Nov 2010)
+
+  03 Nov 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.9.ebuild, -clip-usb-keys-2.5.8.ebuild:
+  Perform all USB operations (including initialization) under 
+  an exclusive lock, to avoid race conditions.
+
+*clip-usb-keys-2.5.8 (10 Jun 2010)
+
+  10 Jun 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.8.ebuild, -clip-usb-keys-2.5.7.ebuild:
+  Fix mount of USB keys when signature could not be checked.
+  Add missing level info to some popups.
+
+*clip-usb-keys-2.5.6 (07 Jun 2010)
+
+  07 Jun 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.6.ebuild, -clip-usb-keys-2.5.5.ebuild:
+  Fix unmounting for single USB keys (always unmounted in the
+  'last' jail to appear in CLIP_JAILS).
+
+*clip-usb-keys-2.5.5 (02 Jun 2010)
+
+  02 Jun 2010; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.5.ebuild, -clip-usb-keys-2.5.4.ebuild:
+  Replace passive information windows (msgbox) with notifications.
+
+*clip-usb-keys-2.5.4 (02 Jun 2010)
+
+  02 Jun 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.4.ebuild, -clip-usb-keys-2.5.3.ebuild:
+  Add ntfs support for USB.
+
+*clip-usb-keys-2.5.3 (01 Jun 2010)
+
+  01 Jun 2010; Mickaël Salaün <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.3.ebuild, -clip-usb-keys-2.5.2.ebuild:
+  Add ext2 support for USB. Change to a simple msgbox when only
+  one jail is defined.
+
+*clip-usb-keys-2.5.2 (25 May 2010)
+
+  25 May 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.2.ebuild, -clip-usb-keys-2.5.1.ebuild:
+  Bugfix release:
+   - removed mounting option after initializing a CLIP tocken
+   as a privuser (#1258)
+   - fixed mounting signed tokens at CLIP level when signature
+   cannot be checked (#1259)
+   - nomad user profiles are no longer allowed to mount a token
+   in the CLIP jails (#1260)
+   - clarified some error messages (#1261)
+
+*clip-usb-keys-2.5.1 (18 Feb 2010)
+
+  18 Feb 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.1.ebuild, -clip-usb-keys-2.5.0.ebuild:
+  Mount R/W cleartext tokens with trace option.
+  Support udf on CD/DVD ROMs.
+
+*clip-usb-keys-2.5.0 (26 Jan 2010)
+
+  26 Jan 2010; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.5.0.ebuild, -clip-usb-keys-2.4.13.ebuild:
+  Remove hardcoded rm_h rm_b list, use /etc/conf.d/clip instead
+  to know exactly what jails we have, remove IUSE core-rm.
+
+*clip-usb-keys-2.4.13 (16 Dec 2009)
+
+  16 Dec 2009; Florent Chabaud <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.13.ebuild, -clip-usb-keys-2.4.12.ebuild:
+  Montage des supports USB signes initialises par un autre poste
+  CLIP. Ticket #172 du reseau de test
+
+*clip-usb-keys-2.4.12 (09 Nov 2009)
+
+  09 Nov 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.12.ebuild, -clip-usb-keys-2.4.11.ebuild:
+  Add wait loop before reading device info from sysfs in
+  hotplug ADD script - seems to be needed with kernel >= 2.6.31.
+
+*clip-usb-keys-2.4.11 (05 Nov 2009)
+
+  05 Nov 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.11.ebuild, -clip-usb-keys-2.4.10.ebuild:
+  Fix dec_usb_status(). Fix xdialog window sizes.
+
+*clip-usb-keys-2.4.10 (04 Nov 2009)
+
+  04 Nov 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.10.ebuild, -clip-usb-keys-2.4.9.ebuild:
+  Fix /sys parsing for USB hubs.
+
+*clip-usb-keys-2.4.9 (02 Nov 2009)
+
+  02 Nov 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.9.ebuild, -clip-usb-keys-2.4.8.ebuild:
+  Fixes for non-partitioned keys.
+
+*clip-usb-keys-2.4.8 (27 Oct 2009)
+
+  27 Oct 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.8.ebuild, -clip-usb-keys-2.4.7.ebuild:
+  Manage /usr/local/var/usb_status to enable monitoring by
+  fbpanel.
+
+*clip-usb-keys-2.4.7 (04 Sep 2009)
+
+  04 Sep 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.7.ebuild, -clip-usb-keys-2.4.6.ebuild:
+  Fix Xdialog sizes for 100dpi.
+
+*clip-usb-keys-2.4.6 (25 Aug 2009)
+
+  25 Aug 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.6.ebuild, -clip-usb-keys-2.4.5.ebuild:
+  Smallish clarification in error messages for init / erase
+  operations.
+
+*clip-usb-keys-2.4.5 (20 Jul 2009)
+
+  20 Jul 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.5.ebuild, -clip-usb-keys-2.4.4.ebuild:
+  Support a generic umount command, that will ask the user for
+  which compartment to umount for.
+  Filter mount level based on which levels already have a mounted
+  token.
+  Remove multiple symlinks for different levels, use a single 
+  daemon, with level passed on the socket as needed.
+  Support USB tokens in UPDATE.
+  Support SLIM logins.
+
+*clip-usb-keys-2.4.4 (02 Jul 2009)
+
+  02 Jul 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.4.ebuild, -clip-usb-keys-2.4.3.ebuild:
+  Misc small fixes : 
+   - clarifications for the get_passphrase() messages
+   - make tokens that fail their signature check available for 
+     initialisation.
+   - warn user before initializing a token, and before regenerating
+     crypto keys.
+   - error out early if user tries to initialize a token for a level
+     where another token is already mounted (the only real error case
+     is when an encrypted token is mounted, and the user tries to 
+     initialize another encrypted token, but let's keep things simple
+     for the user).
+   - CD-ROM unmounting also ejects the CD-ROM
+   - new command - USB token clearing (fills out the token with zeroes, 
+   before partitionning it and creating a VFAT fs on it).
+
+*clip-usb-keys-2.4.3 (24 Jun 2009)
+
+  24 Jun 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.3.ebuild, -clip-usb-keys-2.4.2.ebuild:
+  Let the group authorized to mount stuff in UPDATE be 
+  'mount_update', rather than 'core_admin'.
+
+*clip-usb-keys-2.4.2 (23 Jun 2009)
+
+  23 Jun 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.2.ebuild, -clip-usb-keys-2.4.1.ebuild:
+  Reserve 32 bytes of metadata (currently NULL) after level
+  ID in encrypted and signed keys, for later use (e.g. encoding
+  signature key length, or public key identifier).
+
+*clip-usb-keys-2.4.1 (22 Jun 2009)
+
+  22 Jun 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.1.ebuild, -clip-usb-keys-2.4.0.ebuild:
+  Support 'priv_user' group.
+
+*clip-usb-keys-2.4.0 (03 Jun 2009)
+
+  03 Jun 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.4.0.ebuild, -clip-usb-keys-2.3.1.ebuild:
+  Remove usb-specific hotplug executable, to make room for 
+  the more generic app-clip/hotplug-clip.
+  Do not return an error in hotplug.DEL.sh for invalid 
+  devices, this is expected and pollutes the logs.
+
+*clip-usb-keys-2.3.1 (29 May 2009)
+
+  29 May 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.3.1.ebuild, -clip-usb-keys-2.3.0.ebuild:
+  Support mounting uninitialized usb tokens R/W in those levels
+  listed in RW_LEVELS in usbkeys.conf.
+
+*clip-usb-keys-2.3.0 (20 May 2009)
+
+  20 May 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.3.0.ebuild, -clip-usb-keys-2.2.1.ebuild:
+  Include key-specific information (vendor/model/serial) in
+  the signed part of usb keys.
+
+*clip-usb-keys-2.2.1 (13 May 2009)
+
+  13 May 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.2.1.ebuild, -clip-usb-keys-2.2.0.ebuild:
+  Fix sysfs path parsing in a more portable way.
+  Add a timeout to hotplug.ADD.sh synchronisation.
+
+*clip-usb-keys-2.2.0 (22 Apr 2009)
+
+  22 Apr 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.2.0.ebuild, -clip-usb-keys-2.1.3.ebuild:
+  Port to kernel 2.6.28 (new sysfs paths).
+
+  17 Apr 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  clip-usb-keys-2.1.3.ebuild:
+  Switch to verictl2.eclass.
+
+*clip-usb-keys-2.1.3 (18 Mar 2009)
+
+  18 Mar 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.1.3.ebuild, -clip-usb-keys-2.1.2-r1.ebuild:
+  Fix gcc4 compile.
+
+*clip-usb-keys-2.1.2-r1 (10 Mar 2009)
+
+  10 Mar 2009; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.1.2-r1.ebuild, -clip-usb-keys-2.1.2.ebuild:
+  Fix default usbkeys.conf.
+
+*clip-usb-keys-2.1.2 (22 Dec 2008)
+
+  22 Dec 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.1.2.ebuild, -clip-usb-keys-2.1.1.ebuild:
+  Support unitialized USB tokens by offering to mount them readonly
+  in a jail of the user's choice.
+
+*clip-usb-keys-2.1.1 (18 Dec 2008)
+
+  18 Dec 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.1.1.ebuild, -clip-usb-keys-2.1.0.ebuild:
+  Support mounting CDROMs in the UPDATE jail, from a command
+  launched in the ADMIN session.
+  Prevent mounting two devices of the same type in any given jail.
+
+*clip-usb-keys-2.1.0 (17 Dec 2008)
+
+  17 Dec 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.1.0.ebuild, -clip-usb-keys-2.0.1.ebuild:
+  Add support for mounting (standard) CD-ROMs in jails.
+
+*clip-usb-keys-2.0.1 (16 Dec 2008)
+
+  16 Dec 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.0.1.ebuild, -clip-usb-keys-2.0.ebuild:
+  Multiple smallish fixes :
+   - use a unique password for signature and encryption RSA
+   keys, with the actual passphrases derived from it (#490).
+   - fix unmounting of encrypted tokens in hotplug.DEL.sh (#491).
+   - warn users when uncleanly unmounting a token on hotplug
+   delete event (#492).
+   - update the manpage (#493).
+
+*clip-usb-keys-2.0 (15 Dec 2008)
+
+  15 Dec 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-2.0.ebuild, -clip-usb-keys-1.2.10.ebuild:
+  First release of a new clip-usb-keys-2 :
+   - support signed and signed+encrypted tokens, with a 
+   two-partition schemes (#486)
+   - automatically mount tokens on hotplug event, allow mounting
+   them after initialization (#487)
+   - support mounting several tokens (at different levels only) 
+   simultaneously, get rid of the hardcoded device in 
+   /etc/usbkeys.conf (#488)
+   - improve crypto algorithms and modes (#489)
+
+*clip-usb-keys-1.2.10 (02 Oct 2008)
+
+  02 Oct 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.10.ebuild, -clip-usb-keys-1.2.9.ebuild:
+  Do not export signature private key when exporting usb keys.
+
+*clip-usb-keys-1.2.9 (12 Sep 2008)
+
+  12 Sep 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.9.ebuild, -clip-usb-keys-1.2.8.ebuild:
+  Fix dialog boxes sizes.
+
+*clip-usb-keys-1.2.8 (29 Jul 2008)
+
+  29 Jul 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.8.ebuild, -clip-usb-keys-1.2.7.ebuild:
+  Fix error checking on local variable affectation.
+
+*clip-usb-keys-1.2.7 (16 Jul 2008)
+
+  16 Jul 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.7.ebuild, -clip-usb-keys-1.2.6-r1.ebuild:
+  Set RSA key size to 1536 bits instead of 1024.
+
+*clip-usb-keys-1.2.6-r1 (16 Jul 2008)
+
+  16 Jul 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.6-r1.ebuild, -clip-usb-keys-1.2.6.ebuild:
+  Switch to CCSD veriexec hashes.
+
+*clip-usb-keys-1.2.6 (01 Jul 2008)
+
+  01 Jul 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.6.ebuild, -clip-usb-keys-1.2.5-r1.ebuild:
+  Fix usbadmin daemons startup.
+
+*clip-usb-keys-1.2.5-r1 (30 Apr 2008)
+
+  30 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.5-r1.ebuild, -clip-usb-keys-1.2.5.ebuild:
+  Add support for a 'md' root device for gateways.
+
+*clip-usb-keys-1.2.5 (25 Apr 2008)
+
+  25 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.5.ebuild, -clip-usb-keys-1.2.4.ebuild:
+  Fix export function key generation (binary content got affected
+  to a bash variable, and could get mangled).
+  Fix get_passphrase : actually exit when 'cancel' is clicked on
+  the popup.
+
+*clip-usb-keys-1.2.4 (24 Apr 2008)
+
+  24 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.4.ebuild, -clip-usb-keys-1.2.3.ebuild:
+  Initialization bugfix.
+
+*clip-usb-keys-1.2.3 (21 Apr 2008)
+
+  21 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.3.ebuild, -clip-usb-keys-1.2.2.ebuild:
+  Some more checks on export. Fix deadlock with ssh-keygen 
+  when regenerating existing keys.
+
+*clip-usb-keys-1.2.2 (14 Apr 2008)
+
+  14 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.2.ebuild, -clip-usb-keys-1.2.1.ebuild:
+  Add support for USB RSA key generation and export. Move
+  RM_X keys into USERclip home. Rename keys directory to
+  .keys.
+
+*clip-usb-keys-1.2.1 (11 Apr 2008)
+
+  11 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.1.ebuild, -clip-usb-keys-1.2.0.ebuild:
+  Fix mount permissions for admin/audit.
+
+*clip-usb-keys-1.2.0 (11 Apr 2008)
+
+  11 Apr 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.2.0.ebuild, -clip-usb-keys-1.1.6-r1.ebuild:
+  Further factorize script code. Switch to a unique usbadmin
+  demon, called through different symlinks. Add support for
+  a 'clip' level, that mounts keys in either USERclip, AUDITclip
+  or ADMINclip, based on the user type.
+
+*clip-usb-keys-1.1.6-r1 (28 Mar 2008)
+
+  28 Mar 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.6-r1.ebuild, -clip-usb-keys-1.1.6.ebuild:
+  Add inheritable CAP_CONTEXT, CAP_SYS_ADMIN and CAP_MKNOD to 
+  /sbin/hotplug (in KTHREAD context only).
+
+*clip-usb-keys-1.1.6 (27 Mar 2008)
+
+  27 Mar 2008; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.6.ebuild, -clip-usb-keys-1.1.5.ebuild:
+  Factorize some code and adjust to new /user/tmp tmpfs mount.
+
+*clip-usb-keys-1.1.5 (30 Nov 2007)
+
+  30 Nov 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.5.ebuild, -clip-usb-keys-1.1.4.ebuild:
+  Add 'before xdm' to /etc/init.d/usbadmin.
+
+*clip-usb-keys-1.1.4 (29 Nov 2007)
+
+  29 Nov 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.4.ebuild, -clip-usb-keys-1.1.3.ebuild:
+  Merge EADS's 1.1.1, with following ChangeLog
+
+*clip-usb-keys-1.1.1 (20 Nov 2007)
+
+  20 Nov 2007; EADS D&S <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.1.ebuild:
+  Ticket 67 correction.
+  Ticket 61 correction.
+
+*clip-usb-keys-1.1.3 (14 Nov 2007)
+
+  14 Nov 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.3.ebuild:
+  Fix typos in previous merge : init_usb_key.sh never checked the
+  key's level, because the sector integrity check was done on 
+  /dev/sdb rather than /dev/sdb1, and thus always failed.
+ 
+  07 Nov 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  Remove stale ebuilds before 1.1.2.
+
+*clip-usb-keys-1.1.2 (25 Oct 2007)
+
+  25 Oct 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.2.ebuild:
+  Fix {u,}mount_usb.sh (wrong device). Update an mtab file in /var/run
+  for each level when mounting or unmounting.
+
+*clip-usb-keys-1.1.1 (23 Oct 2007)
+
+  23 Oct 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.1.ebuild:
+  Bump 1.0.3 with some typo fixes to 1.1.1 to supersede 1.1. Note that 
+  1.0.2 corrects the same problem as 1.1, in a different way which is 
+  less dependent on the way the user's home partition is mounted (i.e. 
+  should still work if we change to some other fs ciphering scheme).
+  Get the username/uid earlier in {u,}mount_usb.sh so we don't miss 
+  error messages.
+
+*clip-usb-keys-1.0.3 (09 Oct 2007)
+
+  09 Oct 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.0.3.ebuild:
+  Launch Xdialog in the USERclip jail, with the identity of the 
+  user currently logged in, rather than as root outside of any 
+  jail.
+
+*clip-usb-keys-1.0.2 (05 Oct 2007)
+
+  05 Oct 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.0.2.ebuild:
+  Fix clip-usb-keys to work without 'clip-devel' in IUSE : 
+    - get logged in user by grepping '-:0' in core's utmp (needs
+    >=xdm-1.0.5-r6)
+    - use busybox cat in jails
+    - mount nosuid,nodev,noexec for devctl
+  Also, get usb device from /etc/usbkeys.conf, which is autogenerated
+  by a postinst script using the new "roodisk" eclass.
+  Removed -static from LDFLAGS as well.
+
+*clip-usb-keys-1.1 (05 Oct 2007)
+
+  05 Oct 2007; EADS D&S <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.1.ebuild:
+  Correct the way to get the user connected.
+
+*clip-usb-keys-1.0.1 (03 Oct 2007)
+
+  03 Oct 2007; Vincent Strubel <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.0.1.ebuild:
+  Use /mounts/user_priv/var rather than /user/var to avoid
+  blocking the USER tree umount.
+
+*clip-usb-keys-1.0 (20 Aug 2007)
+
+  20 Aug 2007; EADS D&S <clipos@ssi.gouv.fr>
+  +clip-usb-keys-1.0.ebuild:
+  Initial import.

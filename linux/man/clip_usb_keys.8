@@ -1,0 +1,104 @@
+.TH CLIP_USB_KEYS 8 "DECEMBER 2008" Linux "CLIP Utilities"
+.SH NAME
+clip_usb_keys \- Clip removable mass-storage manager
+.SH DESCRIPTION
+.B clip_usb_keys
+is a set of tools managing signed and signed/encrypted USB mass-storage
+tokens and CD-ROMS (a later addition, hence the name) on CLIP systems.
+.PP
+.BR hotplug
+is an executable called by the linux kernel on each hotplug event.
+It checks if the event received is related to the insertion
+or the removal of a device.
+On all insertions, 
+.BR hotplug
+calls 
+.BR hotplug.ADD.sh.
+On all removalls,
+.BR hotplug
+calls
+.BR hotplug.DEL.sh.
+.PP
+.BR usbadmin
+is a daemon which communicates with the client executable
+.BR usbclt
+( see
+.I clip_usb_clt (8)
+) through a UNIX socket in a given CLIP jail. That jail is determined by the name
+under which 
+.BR usbadmin
+is called. For example, a symlink called 
+.BR usbadmin_rm_h
+and pointing to
+.BR usbadmin
+will create a listening socket in the rm_h jail).
+It can perform the following actions depending on the command received
+from
+.BR usbclt.
+.PP
+\-
+.I UMOUNT
+launches the script
+.BR umount_usb.sh
+which will umount the USB token mounted in the specified jail (and remove any associated
+cryptographic mappings).
+.PP
+\-
+.I INIT
+launches the script
+.BR init_usb_key.sh
+to initialize a signed and encrypted USB token for the specified jail level.
+.PP
+\-
+.I INIT-CLEARTEXT
+launches the script
+.BR init_usb_key.sh
+to initialize a signed (but not encrypted) USB token for the specified jail level.
+.PP
+\-
+.I GENERATE
+launches the script
+.BR generate_usb_keys.sh
+which will generate new RSA keys for the specified level
+.PP
+\-
+.I EXPORT
+launches the script
+.BR export_usb_keys.sh
+which will export the RSA keys for the specified level on the last connected USB mass-storage
+token that was not automatically mounted as a CLIP token. That token must be formated as VFAT, 
+using the first available partition number.
+.PP
+\-
+.I CD_MOUNT
+launches the script
+.BR mount_cdrom.sh
+which mounts a (unique) CD-ROM at the specified level.
+.PP
+\-
+.I CD_UMOUNT
+launches the script
+.BR umount_cdrom.sh
+which unmounts a CD_ROM at the specified level.
+.PP
+\-
+.I UPDATE_CD_MOUNT
+launches the script
+.BR mount_cdrom.sh
+to mount a (unique) CD-ROM in the UPDATE jail.
+.PP
+\-
+.I UPDATE_CD_UMOUNT
+launches the script
+.BR umount_cdrom.sh
+to unmount the CD-ROM mounted in the UPDATE jail.
+.PP
+The logs are stored using 
+.BR logger (1).
+.SH AUTHORS
+SGDN/DCSSI ( Vincent Strubel -
+.I clipos@ssi.gouv.fr
+)
+.PP
+EADS Innovation Works and EADS Defence And Security Systems
+.PP
